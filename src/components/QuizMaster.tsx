@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../../firebase'; // Firebase設定済みファイルをimport
+import { db } from '../lib/firebase'; // Firebase設定済みファイルをimport
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 // 出題者用コンポーネント
