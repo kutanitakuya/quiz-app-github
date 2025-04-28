@@ -1,11 +1,19 @@
+"use client";
+
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link } from "react-router-dom";
 import Host from "./pages/Host";
-import Participant from "./pages/participant";
+import Participant from "./pages/Participant";
+import { BrowserRouter } from "react-router-dom";
 
 const App: React.FC = () => {
+  if (typeof window === "undefined") {
+    // サーバー上ならRouterを使わずに空divだけ返す
+    return <div />;
+  }
+
   return (
-    <Router>
+    <BrowserRouter>
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
         <h1 className="text-2xl font-bold mb-4">クイズアプリ</h1>
 
@@ -23,7 +31,7 @@ const App: React.FC = () => {
           <Route path="/participant" element={<Participant />} />
         </Routes>
       </div>
-    </Router>
+    </BrowserRouter>
   );
 };
 
