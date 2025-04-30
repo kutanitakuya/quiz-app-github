@@ -1,6 +1,7 @@
+'use client';
 import React, { useState } from "react";
-import { db } from "../lib/firebase";
-import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs } from "firebase/firestore";
+import { db } from "@/src/lib/firebase";
+import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc } from "firebase/firestore";
 
 const Host: React.FC = () => {
   const [question, setQuestion] = useState("");
@@ -23,6 +24,24 @@ const Host: React.FC = () => {
 
     // 新しい問題を Firestore に送信
     await setDoc(currentQuestionRef, {
+      question,
+      choices,
+      duration,
+      timestamp: serverTimestamp(),
+    });
+
+    alert("問題を送信しました！");
+    // 入力された値をクリアする。
+    setQuestion("");
+    setChoices(["", "", "", ""]);
+    setDuration(10);
+  };
+
+  const addQuestion = async () => {
+    const questionsRef = collection(db, "questions");
+
+    // 新しい問題を Firestore に送信
+    await addDoc(questionsRef, {
       question,
       choices,
       duration,
@@ -75,6 +94,13 @@ const Host: React.FC = () => {
         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
       >
         回答受付
+      </button>
+
+      <button
+        onClick={addQuestion}
+        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+      >
+        問題送信
       </button>
     </div>
   );
