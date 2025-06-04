@@ -2,6 +2,26 @@
 import React, { useEffect, useState } from "react";
 import { db } from "@/src/lib/firebase";
 import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy } from "firebase/firestore";
+import {
+  Box,
+  Button,
+  Container,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Radio,
+  RadioGroup,
+  TextField,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+} from "@mui/material";
+import Grid from '@mui/material/Grid'
 import './page.css';
 
 type ReceiveQuestion = {
@@ -20,6 +40,8 @@ const Host: React.FC = () => {
   const [choiceCount, setChoiceCount] = useState(4); // ← 2 または 4 を選べる
   const [receiveQuestions, setReceiveQuestions] = useState<ReceiveQuestion[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // 編集中の問題のID
+  const [editQuestionData, setEditQuestionData] = useState<ReceiveQuestion | null>(null); 
 
   const handleChoiceChange = (index: number, value: string) => {
     const newChoices = [...choices];
@@ -49,6 +71,8 @@ const Host: React.FC = () => {
     fetchQuestions();
   }, []);
 
+  // 選択肢の数が変更されたときに choices の配列を更新
+  // 2つまたは4つの選択肢を持つようにする。
   useEffect(() => {
     setChoices((prevChoices) => {
       const newChoices = [...prevChoices];
@@ -76,7 +100,8 @@ const Host: React.FC = () => {
     alert("問題を送信しました！");
   };
 
-  
+  // 問題を送信する関数
+  // これは、現在の問題を更新し、前の回答をクリアする。
   const handleSubmit = async () => {
     const currentQuestionRef = doc(db, "quiz", "currentQuestion");
 
@@ -101,133 +126,187 @@ const Host: React.FC = () => {
     setDuration(10);
   };
 
+  // 問題編集
+  const handleEditClick = (question: ReceiveQuestion) => {
+    setEditingId(question.id);
+    setEditQuestionData({ ...question });
+  };
+
+  // 問題編集
+  const handleSaveClick = async () => {
+    if (!editQuestionData) return;
+    const ref = doc(db, "questions", editQuestionData.id);
+    await setDoc(ref, {
+      question: editQuestionData.question,
+      choices: editQuestionData.choices,
+      order: editQuestionData.order,
+      answer: editQuestionData.answer,
+      timestamp: serverTimestamp(),
+    });
+    alert("更新しました！");
+    setEditingId(null);
+    // 最新の一覧を取得
+    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("order", "asc")));
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<ReceiveQuestion, "id">),
+    }));
+    setReceiveQuestions(list);
+  };
+
 
   return (
-    <div className="">
-      <h2 className="text-red-500">出題者画面</h2>
+    <Container maxWidth="lg" sx={{ mt: 4 }}>
+      <Typography variant="h4" color="primary" gutterBottom>出題者画面</Typography>
 
-      <label className="block mb-2">
-        問題文：
-        <textarea
-          className="w-full border p-1 mb-2 h-32"
+      <Box mb={3}>
+        <TextField
+          label="問題文"
+          multiline
+          fullWidth
+          rows={4}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
         />
-      </label>
+      </Box>
 
-      <div className="mb-4">
-        選択肢：
-        <label className="ml-2">
-          <input
-            type="radio"
-            value={2}
-            checked={choiceCount === 2}
-            onChange={() => setChoiceCount(2)}
-          />{" "}
-          2つ
-        </label>
-        <label className="ml-4">
-          <input
-            type="radio"
-            value={4}
-            checked={choiceCount === 4}
-            onChange={() => setChoiceCount(4)}
-          />{" "}
-          4つ
-        </label>
-      </div>
+      <FormControl component="fieldset" sx={{ mb: 3 }}>
+        <FormLabel component="legend">選択肢の数</FormLabel>
+        <RadioGroup row value={choiceCount} onChange={(e) => setChoiceCount(Number(e.target.value))}>
+          <FormControlLabel value={2} control={<Radio />} label="2つ" />
+          <FormControlLabel value={4} control={<Radio />} label="4つ" />
+        </RadioGroup>
+      </FormControl>
 
-      <div className="">
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         {choices.slice(0, choiceCount).map((choice, idx) => (
-          <textarea
-            key={idx}
-            className="w-full border p-1 mb-2"
-            placeholder={`選択肢 ${idx + 1}`}
-            value={choice}
-            onChange={(e) => handleChoiceChange(idx, e.target.value)}
-          />
-        ))
-        }
-      </div>
-
-      <div className="">
-        答え：
-        {choices.slice(0, choiceCount).map((_, idx) => (
-          <label key={idx} className="block mb-1">
-            <input
-              type="radio"
-              name="answer"
-              value={idx + 1} // 1, 2, 3, 4
-              checked={selectedAnswer === idx + 1}
-              onChange={() => setSelectedAnswer(idx + 1)}
-              className="mr-2"
+          <Grid item xs={12} key={idx}>
+            <TextField
+              fullWidth
+              label={`選択肢 ${idx + 1}`}
+              value={choice}
+              onChange={(e) => handleChoiceChange(idx, e.target.value)}
             />
-            選択肢 {idx + 1}
-          </label>
+          </Grid>
         ))}
-      </div>
+      </Grid>
 
-      <label className="">
-        制限時間（秒）：
-        <textarea
-          className="w-full border p-1 mb-2"
+      <FormControl component="fieldset" sx={{ mb: 3 }}>
+        <FormLabel component="legend">答え</FormLabel>
+        <RadioGroup
+          value={selectedAnswer ?? ""}
+          onChange={(e) => setSelectedAnswer(Number(e.target.value))}
+        >
+          {choices.slice(0, choiceCount).map((_, idx) => (
+            <FormControlLabel
+              key={idx}
+              value={idx + 1}
+              control={<Radio />}
+              label={`選択肢 ${idx + 1}`}
+            />
+          ))}
+        </RadioGroup>
+      </FormControl>
+
+      <Box mb={3}>
+        <TextField
+          label="制限時間（秒）"
+          type="number"
+          fullWidth
           value={duration}
           onChange={(e) => setDuration(Number(e.target.value))}
         />
-      </label>
+      </Box>
 
-      
-        <p></p>
-      <button
-        onClick={addQuestion}
-        className="button005"
-        disabled={isFormIncomplete}
-      >
-        問題追加
-      </button>
-      <p></p>
+      <Box mb={2} display="flex" gap={2}>
+        <Button variant="contained" color="primary" disabled={isFormIncomplete} onClick={addQuestion}>
+          問題追加
+        </Button>
+        <Button variant="outlined" color="secondary" onClick={handleSubmit}>
+          回答受付
+        </Button>
+      </Box>
 
-      <button
-        onClick={handleSubmit}
-        className=""
-      >
-        回答受付
-      </button>
-      
-      <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">問題一覧</h1>
-      <div className="overflow-x-auto">
-        <table className="min-w-250 max-w-800 border-collapse border border-gray-300">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border px-2 py-2 min-w-14">番号</th>
-              <th className="border px-2 py-2 min-w-100">問題</th>
-              <th className="border px-2 py-2 min-w-30 max-w-60">選択肢１</th>
-              <th className="border px-2 py-2 min-w-30 max-w-60">選択肢２</th>
-              <th className="border px-2 py-2 min-w-30 max-w-60">選択肢３</th>
-              <th className="border px-2 py-2 min-w-30 max-w-60">選択肢４</th>
-              <th className="border px-2 py-2 min-w-14">答え</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receiveQuestions.map((q) => (
-              <tr key={q.id}>
-                <td className="border px-4 py-2 text-center">{q.order}</td>
-                <td className="border px-4 py-2">{q.question}</td>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <td key={i} className="border px-4 py-2">
-                    {q.choices[i] ?? ""}
-                  </td>
-                ))}
-                <td className="border px-4 py-2">{q.answer}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Box mt={4}>
+        <Typography variant="h5" gutterBottom>問題一覧</Typography>
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>番号</TableCell>
+                <TableCell>問題</TableCell>
+                <TableCell>選択肢1</TableCell>
+                <TableCell>選択肢2</TableCell>
+                <TableCell>選択肢3</TableCell>
+                <TableCell>選択肢4</TableCell>
+                <TableCell>答え</TableCell>
+                <TableCell>操作</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {receiveQuestions.map((q) => (
+                <TableRow key={q.id}>
+                  <TableCell>{q.order}</TableCell>
+                  <TableCell>
+                    {editingId === q.id ? (
+                      <TextField
+                        value={editQuestionData?.question || ""}
+                        onChange={(e) =>
+                          setEditQuestionData((prev) => prev ? { ...prev, question: e.target.value } : null)
+                        }
+                      />
+                    ) : (
+                      q.question
+                    )}
+                  </TableCell>
+                  {[0, 1, 2, 3].map((i) => (
+                    <TableCell key={i}>
+                      {editingId === q.id ? (
+                        <TextField
+                          value={editQuestionData?.choices[i] || ""}
+                          onChange={(e) => {
+                            if (!editQuestionData) return;
+                            const newChoices = [...editQuestionData.choices];
+                            newChoices[i] = e.target.value;
+                            setEditQuestionData({ ...editQuestionData, choices: newChoices });
+                          }}
+                        />
+                      ) : (
+                        q.choices[i] ?? ""
+                      )}
+                    </TableCell>
+                  ))}
+                  <TableCell>
+                    {editingId === q.id ? (
+                      <TextField
+                        type="number"
+                        value={editQuestionData?.answer ?? ""}
+                        onChange={(e) =>
+                          setEditQuestionData((prev) => prev ? { ...prev, answer: Number(e.target.value) } : null)
+                        }
+                      />
+                    ) : (
+                      q.answer
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingId === q.id ? (
+                      <>
+                        <Button size="small" onClick={handleSaveClick}>保存</Button>
+                        <Button size="small" onClick={() => setEditingId(null)}>キャンセル</Button>
+                      </>
+                    ) : (
+                      <Button size="small" onClick={() => handleEditClick(q)}>編集</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
 
-    </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    </Container>
   );
 };
 
