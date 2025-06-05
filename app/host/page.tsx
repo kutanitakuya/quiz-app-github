@@ -126,13 +126,13 @@ const Host: React.FC = () => {
     setDuration(10);
   };
 
-  // 問題編集
+  // 問題を編集する関数
   const handleEditClick = (question: ReceiveQuestion) => {
     setEditingId(question.id);
     setEditQuestionData({ ...question });
   };
 
-  // 問題編集
+  // 問題を保存する関数
   const handleSaveClick = async () => {
     if (!editQuestionData) return;
     const ref = doc(db, "questions", editQuestionData.id);
@@ -154,9 +154,23 @@ const Host: React.FC = () => {
     setReceiveQuestions(list);
   };
 
+  // 問題を削除する関数
+  const deleteQuestion = async (id: string) => {
+    if (!confirm("本当に削除しますか？")) return;
+    await deleteDoc(doc(db, "questions", id));
+    // 削除後、最新の一覧を再取得
+    const q = query(collection(db, "questions"), orderBy("order", "asc"));
+    const snapshot = await getDocs(q);
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<ReceiveQuestion, "id">),
+    }));
+    setReceiveQuestions(list);
+  };
+
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
+    <Container maxWidth="xl" sx={{ mt: 4 }}>
       <Typography variant="h4" color="primary" gutterBottom>出題者画面</Typography>
 
       <Box mb={3}>
@@ -172,7 +186,7 @@ const Host: React.FC = () => {
 
       <FormControl component="fieldset" sx={{ mb: 3 }}>
         <FormLabel component="legend">選択肢の数</FormLabel>
-        <RadioGroup row value={choiceCount} onChange={(e) => setChoiceCount(Number(e.target.value))}>
+        <RadioGroup value={choiceCount} onChange={(e) => setChoiceCount(Number(e.target.value))}>
           <FormControlLabel value={2} control={<Radio />} label="2つ" />
           <FormControlLabel value={4} control={<Radio />} label="4つ" />
         </RadioGroup>
@@ -233,14 +247,14 @@ const Host: React.FC = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>番号</TableCell>
+                <TableCell sx={{ minWidth: 62 }}>番号</TableCell>
                 <TableCell>問題</TableCell>
-                <TableCell>選択肢1</TableCell>
-                <TableCell>選択肢2</TableCell>
-                <TableCell>選択肢3</TableCell>
-                <TableCell>選択肢4</TableCell>
-                <TableCell>答え</TableCell>
-                <TableCell>操作</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>選択肢1</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>選択肢2</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>選択肢3</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>選択肢4</TableCell>
+                <TableCell sx={{ minWidth: 62 }}>答え</TableCell>
+                <TableCell sx={{ minWidth: 120 }}align="center">操作</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -290,14 +304,25 @@ const Host: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>
-                    {editingId === q.id ? (
-                      <>
-                        <Button size="small" onClick={handleSaveClick}>保存</Button>
-                        <Button size="small" onClick={() => setEditingId(null)}>キャンセル</Button>
-                      </>
-                    ) : (
-                      <Button size="small" onClick={() => handleEditClick(q)}>編集</Button>
-                    )}
+                    <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+                      {editingId === q.id ? (
+                        <>
+                          <Button size="small" onClick={handleSaveClick}>保存</Button>
+                          <Button size="small" onClick={() => setEditingId(null)}>キャンセル</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="small" onClick={() => handleEditClick(q)}>編集</Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => deleteQuestion(q.id)}
+                          >
+                            削除
+                          </Button>
+                        </>
+                      )}
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
