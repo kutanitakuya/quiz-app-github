@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from "react";
 import { db } from "@/src/lib/firebase";
-import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy, Timestamp } from "firebase/firestore";
 import {
   Box,
   Button,
@@ -26,9 +26,11 @@ import './page.css';
 
 type ReceiveQuestion = {
   id: string;
+  duration: number;
   question: string;
   choices: string[];
-  order: number;
+  timestamp: Timestamp;
+  createdAt: Timestamp;
   answer: number;
 };
 
@@ -51,15 +53,15 @@ const Host: React.FC = () => {
 
   // フォームが未入力かどうかをチェック
   // 問題文, 選択肢, 制限時間 のいずれかが空の場合は true を返し、問題送信ボタンを押せないようにする。
-  const isFormIncomplete =
+  const isFormIncomplete = () =>
   question.trim() === "" ||
   choices.some((choice) => choice.trim() === "") ||
-  !duration || isNaN(duration);
+  !duration || isNaN(duration) || selectedAnswer === null;
 
   // Firestore から問題を取得して表示する
   useEffect(() => {
     const fetchQuestions = async () => {
-      const q = query(collection(db, "questions"), orderBy("order", "asc"));
+      const q = query(collection(db, "questions"), orderBy("createdAt", "asc"));
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -95,35 +97,23 @@ const Host: React.FC = () => {
       duration,
       answer: selectedAnswer,
       timestamp: serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
+    alert("問題を追加しました！");
 
-    alert("問題を送信しました！");
-  };
-
-  // 問題を送信する関数
-  // これは、現在の問題を更新し、前の回答をクリアする。
-  const handleSubmit = async () => {
-    const currentQuestionRef = doc(db, "quiz", "currentQuestion");
-
-    // 前の回答をクリア（subcollectionの answers を削除）
-    const answersRef = collection(currentQuestionRef, "answers");
-    const snapshot = await getDocs(answersRef);
-    snapshot.forEach(docSnap => deleteDoc(docSnap.ref));
-
-    // 新しい問題を Firestore に送信
-    await setDoc(currentQuestionRef, {
-      question,
-      choices,
-      duration,
-      answer,
-      timestamp: serverTimestamp(),
-    });
-
-    alert("問題を送信しました！");
     // 入力された値をクリアする。
     setQuestion("");
     setChoices(["", "", "", ""]);
     setDuration(10);
+
+    // 最新の一覧を取得
+    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<ReceiveQuestion, "id">),
+    }));
+    setReceiveQuestions(list);
+
   };
 
   // 問題を編集する関数
@@ -139,14 +129,15 @@ const Host: React.FC = () => {
     await setDoc(ref, {
       question: editQuestionData.question,
       choices: editQuestionData.choices,
-      order: editQuestionData.order,
       answer: editQuestionData.answer,
+      duration: editQuestionData.duration,
       timestamp: serverTimestamp(),
+      createdAt: editQuestionData.createdAt,
     });
-    alert("更新しました！");
+    // alert("更新しました！");
     setEditingId(null);
     // 最新の一覧を取得
-    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("order", "asc")));
+    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
     const list = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Omit<ReceiveQuestion, "id">),
@@ -159,7 +150,7 @@ const Host: React.FC = () => {
     if (!confirm("本当に削除しますか？")) return;
     await deleteDoc(doc(db, "questions", id));
     // 削除後、最新の一覧を再取得
-    const q = query(collection(db, "questions"), orderBy("order", "asc"));
+    const q = query(collection(db, "questions"), orderBy("createdAt", "asc"));
     const snapshot = await getDocs(q);
     const list = snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -216,7 +207,7 @@ const Host: React.FC = () => {
               key={idx}
               value={idx + 1}
               control={<Radio />}
-              label={`選択肢 ${idx + 1}`}
+              label={`${idx + 1}`}
             />
           ))}
         </RadioGroup>
@@ -233,12 +224,12 @@ const Host: React.FC = () => {
       </Box>
 
       <Box mb={2} display="flex" gap={2}>
-        <Button variant="contained" color="primary" disabled={isFormIncomplete} onClick={addQuestion}>
+        <Button variant="contained" color="primary" disabled={isFormIncomplete()} onClick={addQuestion}>
           問題追加
         </Button>
-        <Button variant="outlined" color="secondary" onClick={handleSubmit}>
+        {/* <Button variant="outlined" color="secondary" onClick={handleSubmit}>
           回答受付
-        </Button>
+        </Button> */}
       </Box>
 
       <Box mt={4}>
@@ -248,19 +239,20 @@ const Host: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell sx={{ minWidth: 62 }}>番号</TableCell>
-                <TableCell>問題</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>問題</TableCell>
                 <TableCell sx={{ minWidth: 140 }}>選択肢1</TableCell>
                 <TableCell sx={{ minWidth: 140 }}>選択肢2</TableCell>
                 <TableCell sx={{ minWidth: 140 }}>選択肢3</TableCell>
                 <TableCell sx={{ minWidth: 140 }}>選択肢4</TableCell>
                 <TableCell sx={{ minWidth: 62 }}>答え</TableCell>
+                <TableCell sx={{ minWidth: 62 }}>時間</TableCell>
                 <TableCell sx={{ minWidth: 120 }}align="center">操作</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {receiveQuestions.map((q) => (
+              {receiveQuestions.map((q, index) => (
                 <TableRow key={q.id}>
-                  <TableCell>{q.order}</TableCell>
+                  <TableCell>{index + 1}</TableCell>
                   <TableCell>
                     {editingId === q.id ? (
                       <TextField
@@ -301,6 +293,19 @@ const Host: React.FC = () => {
                       />
                     ) : (
                       q.answer
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingId === q.id ? (
+                      <TextField
+                        type="number"
+                        value={editQuestionData?.duration ?? ""}
+                        onChange={(e) =>
+                          setEditQuestionData((prev) => prev ? { ...prev, duration: Number(e.target.value) } : null)
+                        }
+                      />
+                    ) : (
+                      q.duration
                     )}
                   </TableCell>
                   <TableCell>
