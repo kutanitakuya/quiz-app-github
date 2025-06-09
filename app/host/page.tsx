@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from "react";
 import { db, storage } from "@/src/lib/firebase";
-import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy, Timestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy, Timestamp, getDoc } from "firebase/firestore";
 import {
   Box,
   Button,
@@ -22,24 +22,28 @@ import {
   Paper,
 } from "@mui/material";
 import Grid from '@mui/material/Grid'
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorage, ref as strRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { deleteObject } from "firebase/storage";
+import { CircularProgress } from "@mui/material";
+
+type Choice = {
+  text: string;
+  imageUrl?: string;
+  file?: File;
+  deleted?: boolean;
+  deletedUrl?: string;
+};
 
 type ReceiveQuestion = {
   id: string;
   duration: number;
   question: string;
-  choices: string[];
+  choices: Choice[];
   timestamp: Timestamp;
   createdAt: Timestamp;
   answer: number;
 };
 
-type Choice = {
-  text: string;
-  imageUrl: string;
-  file?: File;
-};
 
 
 const Host: React.FC = () => {
@@ -58,6 +62,9 @@ const Host: React.FC = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // 編集中の問題のID
   const [editQuestionData, setEditQuestionData] = useState<ReceiveQuestion | null>(null); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  
 
   const handleChoiceChange = (index: number, value: string) => {
     const newChoices = [...choices];
@@ -102,58 +109,67 @@ const Host: React.FC = () => {
 
   // 問題を Firestore に追加する関数
   const addQuestion = async () => {
-    const questionsRef = collection(db, "questions");
+    if (!question.trim()) return alert("問題文が空です");
+    if (choices.some((c) => !c.text && !c.file)) return alert("選択肢にテキストまたは画像が必要です");
 
-    // 新しい問題を Firestore に送信
-    await addDoc(questionsRef, {
-      question,
-      choices: choices.slice(0, choiceCount),
-      duration,
-      answer: selectedAnswer,
-      timestamp: serverTimestamp(),
-      createdAt: serverTimestamp(),
-    });
-    alert("問題を追加しました！");
+    setIsSubmitting(true); // ここでローディング開始
 
-    // 入力された値をクリアする。
-    setQuestion("");
-    setChoices([
-      { text: "", imageUrl: "" },
-      { text: "", imageUrl: "" },
-      { text: "", imageUrl: "" },
-      { text: "", imageUrl: "" },
-    ]);
-    setDuration(10);
+    try {
+        const questionsRef = collection(db, "questions");
 
-    // 最新の一覧を取得
-    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
-    const list = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<ReceiveQuestion, "id">),
-    }));
-    setReceiveQuestions(list);
+        // 画像をアップロード
+        const uploadedChoices = await Promise.all(
+          choices.slice(0, choiceCount).map(async (c) => {
+            let imageUrl = c.imageUrl || "";
+            if (c.file) {
+              const id = crypto.randomUUID();
+              const storageRef = strRef(storage, `choices/${id}_${c.file.name}`);
+              await uploadBytes(storageRef, c.file);
+              imageUrl = await getDownloadURL(storageRef);
+            }
+            return { text: c.text, imageUrl };
+          })
+        );
 
-  };
+        await addDoc(questionsRef, {
+          question,
+          choices: uploadedChoices,
+          duration,
+          answer: selectedAnswer,
+          timestamp: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        });
 
-  // 画像を選択肢としてアップロードする関数
-  const handleImageUpload = async (file: File, index: number) => {
-    const storageRef = ref(storage, `choices/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(storageRef);
+        alert("問題を追加しました！");
 
-    setChoices((prev) => {
-      const updated = [...prev];
-      updated[index].imageUrl = url;
-      updated[index].file = file;
-      return updated;
-    });
+        setQuestion("");
+        setChoices([
+          { text: "", imageUrl: "" },
+          { text: "", imageUrl: "" },
+          { text: "", imageUrl: "" },
+          { text: "", imageUrl: "" },
+        ]);
+        setDuration(10);
+
+        const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
+        const list = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<ReceiveQuestion, "id">),
+        }));
+        setReceiveQuestions(list);
+      } catch (err) {
+        console.error("追加エラー", err);
+        alert("問題の追加に失敗しました");
+      } finally {
+        setIsSubmitting(false); // 処理完了でローディング終了
+      }
   };
 
   // 画像を更新する時に前の画像を削除する関数
   const deleteImage = async (url: string) => {
     const storage = getStorage();
     const decodedPath = decodeURIComponent(new URL(url).pathname.split('/o/')[1]);
-    const imageRef = ref(storage, decodedPath);
+    const imageRef = strRef(storage, decodedPath);
     await deleteObject(imageRef);
   };
 
@@ -166,38 +182,105 @@ const Host: React.FC = () => {
   // 問題を保存する関数
   const handleSaveClick = async () => {
     if (!editQuestionData) return;
-    const ref = doc(db, "questions", editQuestionData.id);
-    await setDoc(ref, {
-      question: editQuestionData.question,
-      choices: editQuestionData.choices,
-      answer: editQuestionData.answer,
-      duration: editQuestionData.duration,
-      timestamp: serverTimestamp(),
-      createdAt: editQuestionData.createdAt,
-    });
-    // alert("更新しました！");
-    setEditingId(null);
-    // 最新の一覧を取得
-    const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
-    const list = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<ReceiveQuestion, "id">),
-    }));
-    setReceiveQuestions(list);
+
+    setIsEditSubmitting(true);
+
+    try {
+      const uploadedChoices = await Promise.all(
+        editQuestionData.choices.map(async (c) => {
+          // 古い画像を削除（deletedUrl がある場合）
+          if (c.deletedUrl) {
+            try {
+              const decodedPath = decodeURIComponent(new URL(c.deletedUrl).pathname.split("/o/")[1]);
+              const imageRef = strRef(storage, decodedPath);
+              await deleteObject(imageRef);
+            } catch (err) {
+              console.warn("削除失敗", err);
+            }
+          }
+
+          let imageUrl = c.imageUrl || "";
+          if (c.file) {
+            const id = crypto.randomUUID();
+            const storageRef = strRef(storage, `choices/${id}_${c.file.name}`);
+            await uploadBytes(storageRef, c.file);
+            imageUrl = await getDownloadURL(storageRef);
+          }
+
+          return {
+            text: c.text,
+            imageUrl,
+          };
+        })
+      );
+
+      const refDoc = doc(db, "questions", editQuestionData.id);
+      await setDoc(refDoc, {
+        ...editQuestionData,
+        choices: uploadedChoices,
+        timestamp: serverTimestamp(),
+      });
+
+      setEditingId(null);
+
+      // 再取得
+      const snapshot = await getDocs(query(collection(db, "questions"), orderBy("createdAt", "asc")));
+      const list = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<ReceiveQuestion, "id">),
+      }));
+      setReceiveQuestions(list);
+
+    } catch (err) {
+      console.error("編集保存エラー:", err);
+      alert("保存に失敗しました");
+    } finally {
+      setIsEditSubmitting(false); // ← 終了
+    }
   };
 
   // 問題を削除する関数
   const deleteQuestion = async (id: string) => {
     if (!confirm("本当に削除しますか？")) return;
-    await deleteDoc(doc(db, "questions", id));
-    // 削除後、最新の一覧を再取得
-    const q = query(collection(db, "questions"), orderBy("createdAt", "asc"));
-    const snapshot = await getDocs(q);
-    const list = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<ReceiveQuestion, "id">),
-    }));
-    setReceiveQuestions(list);
+    try {
+      // Firestore から問題を取得（画像URLを含む choices を得るため）
+      const docRef = doc(db, "questions", id);
+      const snap = await getDoc(docRef);
+
+      if (snap.exists()) {
+        const data = snap.data() as ReceiveQuestion;
+
+        // Storage にある画像を削除
+        for (const choice of data.choices) {
+          if (typeof choice === "object" && choice.imageUrl) {
+            try {
+              const storage = getStorage();
+              const decodedPath = decodeURIComponent(new URL(choice.imageUrl).pathname.split('/o/')[1]);
+              const imageRef = strRef(storage, decodedPath);
+              await deleteObject(imageRef);
+            } catch (err) {
+              console.warn("画像削除に失敗:", err);
+            }
+          }
+        }
+      }
+
+      // Firestore のドキュメントを削除
+      await deleteDoc(docRef);
+
+      // 最新の一覧を取得
+      const q = query(collection(db, "questions"), orderBy("createdAt", "asc"));
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<ReceiveQuestion, "id">),
+      }));
+      setReceiveQuestions(list);
+
+    } catch (error) {
+      console.error("削除中にエラー:", error);
+      alert("削除に失敗しました");
+    }
   };
 
 
@@ -226,35 +309,63 @@ const Host: React.FC = () => {
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {choices.slice(0, choiceCount).map((choice, idx) => (
-          <Grid item xs={12} key={idx}>
+          <Grid key={idx}>
             <TextField
               fullWidth
+              sx={{ mb: 0.3, minWidth: 200, maxWidth: 300 }}
               label={`選択肢 ${idx + 1}`}
               value={choice.text}
-              onChange={(e) =>
-                setChoices((prev) => {
-                  const updated = [...prev];
-                  updated[idx].text = e.target.value;
-                  return updated;
-                })
-              }
+              onChange={(e) => {
+                const updated = [...choices];
+                updated[idx].text = e.target.value;
+                setChoices(updated);
+              }}
             />
-            <Button variant="outlined" component="label">
-              画像を選択
-              <input
-                type="file"
-                hidden
-                accept="image/*"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    handleImageUpload(e.target.files[0], idx);
-                  }
-                }}
-              />
-            </Button>
-            {choice.imageUrl && (
-              <img src={choice.imageUrl} alt={`選択肢${idx + 1}`} style={{ maxHeight: 100, marginTop: 8 }} />
-            )}
+            {/* +画像ボタン（画像未選択時のみ表示） */}
+              {!choice.file && !choice.imageUrl && (
+                <Button
+                  variant="outlined"
+                  component="label"
+                >
+                  + 画像
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const updated = [...choices];
+                        updated[idx].file = file;
+                        setChoices(updated);
+                      }
+                    }}
+                  />
+                </Button>
+              )}
+
+              {/* 選択済み画像 + 削除ボタン */}
+              {(choice.file || choice.imageUrl) && (
+                <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1 }}>
+                  {/* 画像プレビュー（file があれば FileReader、なければ URL） */}
+                  <Typography variant="body2" color="green">
+                    {choice.file?.name ?? "画像選択済み"}
+                  </Typography>
+                  <Button
+                    variant="text"
+                    size="medium"
+                    sx={{ minWidth: 30, padding: "2px 6px" }}
+                    onClick={() => {
+                      const updated = [...choices];
+                      updated[idx].file = undefined;
+                      updated[idx].imageUrl = undefined;
+                      setChoices(updated);
+                    }}
+                  >
+                    ×
+                  </Button>
+                </Box>
+              )}
           </Grid>
         ))}
       </Grid>
@@ -286,13 +397,17 @@ const Host: React.FC = () => {
         />
       </Box>
 
-      <Box mb={2} display="flex" gap={2}>
-        <Button variant="contained" color="primary" disabled={isFormIncomplete()} onClick={addQuestion}>
-          問題追加
+      <Box mb={2} display="flex" gap={2} alignItems="center">
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={isFormIncomplete() || isSubmitting}
+          onClick={addQuestion}
+        >
+          {isSubmitting ? "アップロード中..." : "問題追加"}
         </Button>
-        {/* <Button variant="outlined" color="secondary" onClick={handleSubmit}>
-          回答受付
-        </Button> */}
+
+        {isSubmitting && <CircularProgress size={24} color="primary" />}
       </Box>
 
       <Box mt={4}>
@@ -331,17 +446,107 @@ const Host: React.FC = () => {
                   {[0, 1, 2, 3].map((i) => (
                     <TableCell key={i}>
                       {editingId === q.id ? (
-                        <TextField
-                          value={editQuestionData?.choices[i] || ""}
-                          onChange={(e) => {
-                            if (!editQuestionData) return;
-                            const newChoices = [...editQuestionData.choices];
-                            newChoices[i] = e.target.value;
-                            setEditQuestionData({ ...editQuestionData, choices: newChoices });
-                          }}
-                        />
+                        <>
+                          {/* テキスト編集 */}
+                          <TextField
+                            fullWidth
+                            value={editQuestionData?.choices[i]?.text || ""}
+                            onChange={(e) => {
+                              if (!editQuestionData) return;
+                              const updatedChoices = [...editQuestionData.choices];
+                              updatedChoices[i] = {
+                                ...updatedChoices[i],
+                                text: e.target.value,
+                              };
+                              setEditQuestionData({
+                                ...editQuestionData,
+                                choices: updatedChoices,
+                              });
+                            }}
+                          />
+
+                          {/* 画像プレビュー（すでにある場合） */}
+                          {editQuestionData?.choices[i]?.imageUrl && !editQuestionData?.choices[i]?.deleted && (
+                            <Box mt={1} display="flex" alignItems="center" gap={1}>
+                              <img
+                                src={editQuestionData.choices[i].imageUrl}
+                                alt={`選択肢${i + 1}`}
+                                style={{ maxHeight: 60 }}
+                              />
+                              <Button
+                                size="small"
+                                onClick={() => {
+                                  if (!editQuestionData) return;
+                                  const updatedChoices = [...editQuestionData.choices];
+                                  updatedChoices[i] = {
+                                    ...updatedChoices[i],
+                                    deletedUrl: updatedChoices[i].imageUrl, // ← 元画像の削除URLとして保持
+                                    imageUrl: "",                            // 表示は消す
+                                    deleted: false,                          // 削除対象として別変数で管理
+                                  };
+                                  setEditQuestionData({
+                                    ...editQuestionData,
+                                    choices: updatedChoices,
+                                  });
+                                }}
+                              >
+                                ×
+                              </Button>
+                            </Box>
+                          )}
+
+                          {/* 画像が未設定ならアップロードボタン表示 */}
+                          {!editQuestionData?.choices[i]?.imageUrl || editQuestionData?.choices[i]?.deleted ? (
+                            <Button
+                              variant="outlined"
+                              component="label"
+                              size="small"
+                              sx={{ mt: 1 }}
+                            >
+                              + 画像
+                              <input
+                                type="file"
+                                accept="image/*"
+                                hidden
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file || !editQuestionData) return;
+
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    const previewUrl = reader.result as string;
+                                    const updatedChoices = [...editQuestionData.choices];
+                                    updatedChoices[i] = {
+                                      ...updatedChoices[i],
+                                      imageUrl: previewUrl,
+                                      file,
+                                      // deletedUrl は変更しない（古い画像削除のため残しておく）
+                                    };
+                                    setEditQuestionData({
+                                      ...editQuestionData,
+                                      choices: updatedChoices,
+                                    });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }}
+                              />
+                            </Button>
+                          ) : null}
+                        </>
                       ) : (
-                        q.choices[i] ?? ""
+                        <>
+                          {/* テキスト */}
+                          {q.choices[i]?.text ?? ""}
+
+                          {/* 画像 */}
+                          {q.choices[i]?.imageUrl && (
+                            <img
+                              src={q.choices[i].imageUrl}
+                              alt={`選択肢${i + 1}`}
+                              style={{ display: "block", maxHeight: 60, marginTop: 4 }}
+                            />
+                          )}
+                        </>
                       )}
                     </TableCell>
                   ))}
@@ -375,8 +580,21 @@ const Host: React.FC = () => {
                     <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
                       {editingId === q.id ? (
                         <>
-                          <Button size="small" onClick={handleSaveClick}>保存</Button>
-                          <Button size="small" onClick={() => setEditingId(null)}>キャンセル</Button>
+                          <Button
+                            size="small"
+                            onClick={handleSaveClick}
+                            disabled={isEditSubmitting}
+                          >
+                            {isEditSubmitting ? "保存中..." : "保存"}
+                          </Button>
+                          {isEditSubmitting && <CircularProgress size={20} sx={{ ml: 1 }} />}
+                          <Button
+                            size="small"
+                            onClick={() => setEditingId(null)}
+                            disabled={isEditSubmitting}
+                          >
+                            キャンセル
+                          </Button>
                         </>
                       ) : (
                         <>
