@@ -1,6 +1,7 @@
 // firebase.ts
 import { initializeApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -19,5 +20,6 @@ const app = initializeApp(firebaseConfig);
 
 // Firestoreインスタンスを取得
 const db: Firestore = getFirestore(app);
+export const storage = getStorage(app);
 
 export { db };

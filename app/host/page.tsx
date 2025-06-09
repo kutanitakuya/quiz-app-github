@@ -22,7 +22,8 @@ import {
   Paper,
 } from "@mui/material";
 import Grid from '@mui/material/Grid'
-import './page.css';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { deleteObject } from "firebase/storage";
 
 type ReceiveQuestion = {
   id: string;
@@ -116,6 +117,29 @@ const Host: React.FC = () => {
 
   };
 
+  // 画像を選択肢としてアップロードする関数
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const storage = getStorage();
+    const storageRef = ref(storage, `choices/${Date.now()}_${file.name}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+
+    const newChoices = [...choices];
+    newChoices[index] = url;  // URL を選択肢として保存
+    setChoices(newChoices);
+  };
+
+  // 画像を更新する時に前の画像を削除する関数
+  const deleteImage = async (url: string) => {
+    const storage = getStorage();
+    const decodedPath = decodeURIComponent(new URL(url).pathname.split('/o/')[1]);
+    const imageRef = ref(storage, decodedPath);
+    await deleteObject(imageRef);
+  };
+
   // 問題を編集する関数
   const handleEditClick = (question: ReceiveQuestion) => {
     setEditingId(question.id);
@@ -191,6 +215,11 @@ const Host: React.FC = () => {
               label={`選択肢 ${idx + 1}`}
               value={choice}
               onChange={(e) => handleChoiceChange(idx, e.target.value)}
+            />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageUpload(e, idx)}
             />
           </Grid>
         ))}
