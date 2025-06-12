@@ -35,9 +35,22 @@ type ReceiveQuestion = {
   answer: number;
 };
 
+type Choice = {
+  text: string;
+  imageUrl: string;
+  file?: File;
+};
+
+
 const Host: React.FC = () => {
   const [question, setQuestion] = useState("");
-  const [choices, setChoices] = useState(["", "", "", ""]);
+  // const [choices, setChoices] = useState(["", "", "", ""]);
+  const [choices, setChoices] = useState<Choice[]>([
+  { text: "", imageUrl: "" },
+  { text: "", imageUrl: "" },
+  { text: "", imageUrl: "" },
+  { text: "", imageUrl: "" },
+]);
   const [duration, setDuration] = useState(10); // 秒数
   const [answer, setAnswer] = useState("");
   const [choiceCount, setChoiceCount] = useState(4); // ← 2 または 4 を選べる
@@ -48,7 +61,7 @@ const Host: React.FC = () => {
 
   const handleChoiceChange = (index: number, value: string) => {
     const newChoices = [...choices];
-    newChoices[index] = value;
+    newChoices[index] = { ...newChoices[index], text: value };
     setChoices(newChoices);
   };
 
@@ -56,7 +69,7 @@ const Host: React.FC = () => {
   // 問題文, 選択肢, 制限時間 のいずれかが空の場合は true を返し、問題送信ボタンを押せないようにする。
   const isFormIncomplete = () =>
   question.trim() === "" ||
-  choices.some((choice) => choice.trim() === "") ||
+  choices.some((choice) => choice.text.trim() === "") ||
   !duration || isNaN(duration) || selectedAnswer === null;
 
   // Firestore から問題を取得して表示する
@@ -81,7 +94,7 @@ const Host: React.FC = () => {
       const newChoices = [...prevChoices];
       newChoices.length = choiceCount;
       for (let i = 0; i < choiceCount; i++) {
-        if (newChoices[i] === undefined) newChoices[i] = "";
+        if (newChoices[i] === undefined) newChoices[i] = { text: "", imageUrl: "" };
       }
       return newChoices;
     });
@@ -104,7 +117,12 @@ const Host: React.FC = () => {
 
     // 入力された値をクリアする。
     setQuestion("");
-    setChoices(["", "", "", ""]);
+    setChoices([
+      { text: "", imageUrl: "" },
+      { text: "", imageUrl: "" },
+      { text: "", imageUrl: "" },
+      { text: "", imageUrl: "" },
+    ]);
     setDuration(10);
 
     // 最新の一覧を取得
@@ -118,18 +136,17 @@ const Host: React.FC = () => {
   };
 
   // 画像を選択肢としてアップロードする関数
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const storage = getStorage();
+  const handleImageUpload = async (file: File, index: number) => {
     const storageRef = ref(storage, `choices/${Date.now()}_${file.name}`);
     await uploadBytes(storageRef, file);
     const url = await getDownloadURL(storageRef);
 
-    const newChoices = [...choices];
-    newChoices[index] = url;  // URL を選択肢として保存
-    setChoices(newChoices);
+    setChoices((prev) => {
+      const updated = [...prev];
+      updated[index].imageUrl = url;
+      updated[index].file = file;
+      return updated;
+    });
   };
 
   // 画像を更新する時に前の画像を削除する関数
@@ -213,14 +230,31 @@ const Host: React.FC = () => {
             <TextField
               fullWidth
               label={`選択肢 ${idx + 1}`}
-              value={choice}
-              onChange={(e) => handleChoiceChange(idx, e.target.value)}
+              value={choice.text}
+              onChange={(e) =>
+                setChoices((prev) => {
+                  const updated = [...prev];
+                  updated[idx].text = e.target.value;
+                  return updated;
+                })
+              }
             />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleImageUpload(e, idx)}
-            />
+            <Button variant="outlined" component="label">
+              画像を選択
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    handleImageUpload(e.target.files[0], idx);
+                  }
+                }}
+              />
+            </Button>
+            {choice.imageUrl && (
+              <img src={choice.imageUrl} alt={`選択肢${idx + 1}`} style={{ maxHeight: 100, marginTop: 8 }} />
+            )}
           </Grid>
         ))}
       </Grid>
