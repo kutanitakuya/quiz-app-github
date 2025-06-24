@@ -165,14 +165,6 @@ const Host: React.FC = () => {
       }
   };
 
-  // 画像を更新する時に前の画像を削除する関数
-  const deleteImage = async (url: string) => {
-    const storage = getStorage();
-    const decodedPath = decodeURIComponent(new URL(url).pathname.split('/o/')[1]);
-    const imageRef = strRef(storage, decodedPath);
-    await deleteObject(imageRef);
-  };
-
   // 問題を編集する関数
   const handleEditClick = (question: ReceiveQuestion) => {
     setEditingId(question.id);
