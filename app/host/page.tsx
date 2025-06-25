@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from "react";
 import { db, storage } from "@/src/lib/firebase";
-import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy, Timestamp, getDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, deleteDoc, getDocs, addDoc, query, orderBy, Timestamp, getDoc, onSnapshot } from "firebase/firestore";
 import {
   Box,
   Button,
@@ -64,6 +64,13 @@ const Host: React.FC = () => {
   const [editQuestionData, setEditQuestionData] = useState<ReceiveQuestion | null>(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [control, setControl] = useState<{
+    isQuizStarted?: boolean;
+    isAnswerStarted?: boolean;
+    showAnswerCounts?: boolean;
+    showAnswerCheck?: boolean;
+    currentQuestionIndex?: number;
+  }>({});
   
 
   const handleChoiceChange = (index: number, value: string) => {
@@ -92,6 +99,17 @@ const Host: React.FC = () => {
     };
 
     fetchQuestions();
+  }, []);
+
+  // Firestore の quizControl/control を購読
+  useEffect(() => {
+    const ctrlRef = doc(db, 'quizControl', 'control');
+    const unsub = onSnapshot(ctrlRef, (snap) => {
+      if (snap.exists()) {
+        setControl(snap.data() as any);
+      }
+    });
+    return () => unsub();
   }, []);
 
   // 選択肢の数が変更されたときに choices の配列を更新
@@ -279,6 +297,75 @@ const Host: React.FC = () => {
   return (
     <Container maxWidth="xl" sx={{ mt: 4 }}>
       <Typography variant="h4" color="primary" gutterBottom>出題者画面</Typography>
+
+      <Box mb={3} display="flex" gap={2}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={async () => {
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(ctrlRef, { isQuizStarted: true }, { merge: true });
+          }}
+        >
+          クイズ開始
+        </Button>
+
+        <Button
+          variant="contained"
+          color="secondary"
+          onClick={async () => {
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(ctrlRef, { isAnswerStarted: true }, { merge: true });
+          }}
+          disabled={!control.isQuizStarted}
+        >
+          回答スタート
+        </Button>
+
+        <Button
+          variant="contained"
+          onClick={async () => {
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(ctrlRef, { showAnswerCounts: true }, { merge: true });
+          }}
+          disabled={!control.isAnswerStarted}
+        >
+          回答数表示
+        </Button>
+
+        <Button
+          variant="contained"
+          onClick={async () => {
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(ctrlRef, { showAnswerCheck: true }, { merge: true });
+          }}
+          disabled={!control.isAnswerStarted}
+        >
+          アンサーチェック
+        </Button>
+
+        <Button
+          variant="contained"
+          onClick={async () => {
+            const nextIndex = (control.currentQuestionIndex ?? 0) + 1;
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(
+              ctrlRef,
+              {
+                currentQuestionIndex: nextIndex,
+                // フェーズのリセット
+                isAnswerStarted: false,
+                showAnswerCounts: false,
+                showAnswerCheck: false,
+              },
+              { merge: true }
+            );
+          }}
+          disabled={!control.isQuizStarted}
+        >
+          次の問題へ
+        </Button>
+      </Box>
 
       <Box mb={3}>
         <TextField

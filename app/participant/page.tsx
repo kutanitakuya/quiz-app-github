@@ -1,93 +1,200 @@
 'use client';
-import { useEffect, useState } from "react";
-import { db } from "@/src/lib/firebase";
+import React, { useState, useEffect } from 'react';
+import { db } from '@/src/lib/firebase';
 import {
   doc,
-  onSnapshot,
   collection,
-  addDoc,
-  serverTimestamp,
   query,
   where,
-  getDocs
-} from "firebase/firestore";
+  orderBy,
+  onSnapshot,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import {
+  Box,
+  Button,
+  Container,
+  TextField,
+  Typography,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  CircularProgress,
+} from '@mui/material';
 
 const Participant: React.FC = () => {
-  const [question, setQuestion] = useState("");
-  const [choices, setChoices] = useState<string[]>([]);
-  const [duration, setDuration] = useState(10);
-  const [remainingTime, setRemainingTime] = useState(0);
-  const [hasAnswered, setHasAnswered] = useState(false);
+  const [name, setName] = useState('');
+  const [userId, setUserId] = useState<string>('');
+  const [control, setControl] = useState<any>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [question, setQuestion] = useState<any>(null);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [counts, setCounts] = useState<number[]>([]);
 
-  const currentQuestionRef = doc(db, "quiz", "currentQuestion");
-
-  // タイマー更新
+  // 管理者画面の操作状況を購読
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (remainingTime > 0) {
-      timer = setTimeout(() => setRemainingTime((prev) => prev - 1), 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [remainingTime]);
-
-  // Firestore の監視
-  useEffect(() => {
-    const unsubscribe = onSnapshot(currentQuestionRef, (docSnap) => {
-      const data = docSnap.data();
-      if (data) {
-        setQuestion(data.question);
-        setChoices(data.choices);
-        setDuration(data.duration);
-        setRemainingTime(data.duration);
-        setHasAnswered(false); // 新しい問題が来たらリセット
-      }
+    const controlRef = doc(db, 'quizControl', 'control');
+    const unsubscribe = onSnapshot(controlRef, (snap) => {
+      if (snap.exists()) setControl(snap.data());
     });
     return () => unsubscribe();
   }, []);
 
-  // 回答を送信
-  const handleAnswer = async (choiceIndex: number) => {
-    if (hasAnswered || remainingTime <= 0) return;
-
-    const answersRef = collection(currentQuestionRef, "answers");
-
-    // 同じ参加者が重複して回答しないように判定（今はランダム、将来的にはuidなどで管理）
-    await addDoc(answersRef, {
-      choiceIndex,
-      answeredAt: serverTimestamp(),
+  // 質問一覧を購読
+  useEffect(() => {
+    const q = query(
+      collection(db, 'questions'),
+      orderBy('createdAt', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const qs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setQuestions(qs);
     });
+    return () => unsubscribe();
+  }, []);
 
-    setHasAnswered(true);
+  // 現在の質問を更新
+  useEffect(() => {
+    if (
+      control &&
+      Array.isArray(questions) &&
+      control.currentQuestionIndex < questions.length
+    ) {
+      setQuestion(questions[control.currentQuestionIndex]);
+    }
+  }, [control, questions]);
+
+  // 質問切り替えやモード切り替え時にローカル状態をリセット
+  useEffect(() => {
+    setSelectedChoice(null);
+    setSubmitted(false);
+    setCounts([]);
+  }, [control?.currentQuestionIndex, control?.showAnswerCounts, control?.isAnswerStarted]);
+
+  // 名前入力後に userId を生成
+  const handleJoin = () => {
+    const id = `${name}_${crypto.randomUUID().slice(0, 8)}`;
+    setUserId(id);
   };
 
-  return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow">
-      <h2 className="text-xl font-bold mb-4">参加者画面</h2>
+  // 回答を送信
+  const handleSubmit = async () => {
+    if (!question || selectedChoice == null) return;
+    await addDoc(collection(db, 'answers'), {
+      userId,
+      questionId: question.id,
+      choice: selectedChoice,
+      timestamp: serverTimestamp(),
+    });
+    setSubmitted(true);
+  };
 
-      {question ? (
-        <>
-          <p className="mb-2 font-semibold">Q. {question}</p>
-          <div className="mb-4">
-            {choices.map((choice, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleAnswer(idx)}
-                disabled={hasAnswered || remainingTime <= 0}
-                className={`w-full text-left mb-2 px-4 py-2 rounded border ${
-                  hasAnswered ? "bg-gray-300" : "bg-blue-500 text-white hover:bg-blue-600"
-                }`}
+  // 回答数を取得
+  useEffect(() => {
+    if (control?.showAnswerCounts && question) {
+      (async () => {
+        const ansQ = query(
+          collection(db, 'answers'),
+          where('questionId', '==', question.id)
+        );
+        const snap = await getDocs(ansQ);
+        const cnts = question.choices.map(() => 0);
+        snap.docs.forEach((d) => {
+          const data: any = d.data();
+          const ch = data.choice;
+          if (typeof ch === 'number') cnts[ch - 1] = (cnts[ch - 1] || 0) + 1;
+        });
+        setCounts(cnts);
+      })();
+    }
+  }, [control?.showAnswerCounts, question]);
+
+  return (
+    <Container maxWidth="sm" sx={{ mt: 4 }}>
+      {!userId ? (
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            参加者画面
+          </Typography>
+          <TextField
+            label="お名前"
+            fullWidth
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            disabled={!name.trim()}
+            onClick={handleJoin}
+          >
+            参加
+          </Button>
+        </Box>
+      ) : !control?.isQuizStarted ? (
+        <Typography variant="h6">
+          管理者がクイズを開始するまでお待ちください。
+        </Typography>
+      ) : control.isQuizStarted && !control.isAnswerStarted ? (
+        <Box>
+          <Typography variant="h6">{question?.question}</Typography>
+        </Box>
+      ) : control.isAnswerStarted && !control.showAnswerCounts && !control.showAnswerCheck ? (
+        <Box>
+          <Typography variant="h6">{question?.question}</Typography>
+          {!submitted ? (
+            <Box sx={{ mt: 2 }}>
+              <RadioGroup
+                value={
+                  selectedChoice != null ? selectedChoice : ''
+                }
+                onChange={(e) => setSelectedChoice(Number(e.target.value))}
               >
-                {choice}
-              </button>
-            ))}
-          </div>
-          <p>残り時間：{remainingTime} 秒</p>
-          {hasAnswered && <p className="text-green-600 mt-2">回答しました！</p>}
-        </>
-      ) : (
-        <p>現在、出題中の問題はありません。</p>
-      )}
-    </div>
+                {question?.choices.map((c: any, idx: number) => (
+                  <FormControlLabel
+                    key={idx}
+                    value={idx + 1}
+                    control={<Radio />}
+                    label={c.text || `選択肢${idx + 1}`}
+                  />
+                ))}
+              </RadioGroup>
+              <Button
+                variant="contained"
+                sx={{ mt: 2 }}
+                disabled={selectedChoice == null}
+                onClick={handleSubmit}
+              >
+                回答
+              </Button>
+            </Box>
+          ) : (
+            <Typography variant="body1">
+              回答済みです。お待ちください。
+            </Typography>
+          )}
+        </Box>
+      ) : control.showAnswerCounts ? (
+        <Box>
+          <Typography variant="h6">回答数</Typography>
+          {counts.map((count, idx) => (
+            <Typography key={idx}>
+              選択肢{idx + 1}: {count} 件
+            </Typography>
+          ))}
+        </Box>
+      ) : control.showAnswerCheck ? (
+        <Box>
+          <Typography variant="h6">{question?.question}</Typography>
+          <Typography variant="h6" color="secondary">
+            正解: 選択肢{question?.answer}
+          </Typography>
+        </Box>
+      ) : null}
+    </Container>
   );
 };
 
