@@ -18,10 +18,9 @@ import {
   Container,
   TextField,
   Typography,
-  Radio,
-  RadioGroup,
-  FormControlLabel,
   CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 
 const Participant: React.FC = () => {
@@ -50,8 +49,7 @@ const Participant: React.FC = () => {
       orderBy('createdAt', 'asc')
     );
     const unsubscribe = onSnapshot(q, (snap) => {
-      const qs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setQuestions(qs);
+      setQuestions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsubscribe();
   }, []);
@@ -60,14 +58,14 @@ const Participant: React.FC = () => {
   useEffect(() => {
     if (
       control &&
-      Array.isArray(questions) &&
+      typeof control.currentQuestionIndex === 'number' &&
       control.currentQuestionIndex < questions.length
     ) {
       setQuestion(questions[control.currentQuestionIndex]);
     }
   }, [control, questions]);
 
-  // 質問切り替えやモード切り替え時にローカル状態をリセット
+  // フェーズ切替時リセット
   useEffect(() => {
     setSelectedChoice(null);
     setSubmitted(false);
@@ -80,7 +78,16 @@ const Participant: React.FC = () => {
     setUserId(id);
   };
 
-  // 回答を送信
+  // 回答選択切り替え
+  const handleChoiceToggle = (
+    _event: React.MouseEvent<HTMLElement>,
+    newValue: number | null
+  ) => {
+    if (submitted) return;
+    setSelectedChoice(newValue);
+  };
+
+  // 回答送信
   const handleSubmit = async () => {
     if (!question || selectedChoice == null) return;
     await addDoc(collection(db, 'answers'), {
@@ -92,7 +99,7 @@ const Participant: React.FC = () => {
     setSubmitted(true);
   };
 
-  // 回答数を取得
+  // 回答数取得
   useEffect(() => {
     if (control?.showAnswerCounts && question) {
       (async () => {
@@ -103,17 +110,18 @@ const Participant: React.FC = () => {
         const snap = await getDocs(ansQ);
         const cnts = question.choices.map(() => 0);
         snap.docs.forEach((d) => {
-          const data: any = d.data();
-          const ch = data.choice;
-          if (typeof ch === 'number') cnts[ch - 1] = (cnts[ch - 1] || 0) + 1;
+          const ch = d.data().choice;
+          if (typeof ch === 'number') cnts[ch - 1] += 1;
         });
         setCounts(cnts);
       })();
     }
   }, [control?.showAnswerCounts, question]);
 
+  // レンダリング
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
+      {/* 名前入力 */}
       {!userId ? (
         <Box>
           <Typography variant="h5" gutterBottom>
@@ -134,66 +142,94 @@ const Participant: React.FC = () => {
             参加
           </Button>
         </Box>
-      ) : !control?.isQuizStarted ? (
-        <Typography variant="h6">
-          管理者がクイズを開始するまでお待ちください。
-        </Typography>
-      ) : control.isQuizStarted && !control.isAnswerStarted ? (
-        <Box>
-          <Typography variant="h6">{question?.question}</Typography>
-        </Box>
-      ) : control.isAnswerStarted && !control.showAnswerCounts && !control.showAnswerCheck ? (
-        <Box>
-          <Typography variant="h6">{question?.question}</Typography>
-          {!submitted ? (
-            <Box sx={{ mt: 2 }}>
-              <RadioGroup
-                value={
-                  selectedChoice != null ? selectedChoice : ''
-                }
-                onChange={(e) => setSelectedChoice(Number(e.target.value))}
-              >
-                {question?.choices.map((c: any, idx: number) => (
-                  <FormControlLabel
-                    key={idx}
-                    value={idx + 1}
-                    control={<Radio />}
-                    label={c.text || `選択肢${idx + 1}`}
-                  />
-                ))}
-              </RadioGroup>
-              <Button
-                variant="contained"
-                sx={{ mt: 2 }}
-                disabled={selectedChoice == null}
-                onClick={handleSubmit}
-              >
-                回答
-              </Button>
-            </Box>
-          ) : (
-            <Typography variant="body1">
+      ) : (
+        <>
+          {/* 問題文 */}
+          <Typography variant="h6" gutterBottom>
+            {question?.question}
+          </Typography>
+
+          {/* 選択肢カード */}
+          <ToggleButtonGroup
+            exclusive
+            value={selectedChoice}
+            onChange={handleChoiceToggle}
+            sx={{ flexWrap: 'wrap', gap: 2 }}
+          >
+            {question?.choices.map((c: any, idx: number) => {
+              const choiceNo = idx + 1;
+              const isCorrect = control?.showAnswerCheck && choiceNo === question.answer;
+              const count = control?.showAnswerCounts ? counts[idx] : null;
+              return (
+                <ToggleButton
+                  key={idx}
+                  value={choiceNo}
+                  disabled={!control?.isAnswerStarted || submitted || control?.showAnswerCounts || control?.showAnswerCheck}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    boxShadow: 1,
+                    textTransform: 'none',
+                    position: 'relative',
+                    border: isCorrect ? '2px solid red' : undefined,
+                    '&.Mui-selected': { boxShadow: 3 },
+                  }}
+                >
+                  <Box display="flex" flexDirection="column" alignItems="center">
+                    {c.imageUrl && (
+                      <Box
+                        component="img"
+                        src={c.imageUrl}
+                        alt={c.text}
+                        sx={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 1, mb: 1 }}
+                      />
+                    )}
+                    <Typography variant="body1">{c.text}</Typography>
+                  </Box>
+                  {/* 回答数バッジ */}
+                  {control?.showAnswerCounts && count != null && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 4,
+                        right: 4,
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        borderRadius: '50%',
+                        width: 24,
+                        height: 24,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography variant="caption" color="white">
+                        {count}
+                      </Typography>
+                    </Box>
+                  )}
+                </ToggleButton>
+              );
+            })}
+          </ToggleButtonGroup>
+
+          {/* ボタン／メッセージ */}
+          {!submitted && control?.isAnswerStarted && !control?.showAnswerCounts && !control?.showAnswerCheck ? (
+            <Button
+              variant="contained"
+              sx={{ mt: 2 }}
+              disabled={selectedChoice == null}
+              onClick={handleSubmit}
+            >
+              回答
+            </Button>
+          ) : null}
+          {submitted && !control?.showAnswerCounts && !control?.showAnswerCheck && (
+            <Typography variant="body1" sx={{ mt: 2 }}>
               回答済みです。お待ちください。
             </Typography>
           )}
-        </Box>
-      ) : control.showAnswerCounts ? (
-        <Box>
-          <Typography variant="h6">回答数</Typography>
-          {counts.map((count, idx) => (
-            <Typography key={idx}>
-              選択肢{idx + 1}: {count} 件
-            </Typography>
-          ))}
-        </Box>
-      ) : control.showAnswerCheck ? (
-        <Box>
-          <Typography variant="h6">{question?.question}</Typography>
-          <Typography variant="h6" color="secondary">
-            正解: 選択肢{question?.answer}
-          </Typography>
-        </Box>
-      ) : null}
+        </>
+      )}
     </Container>
   );
 };

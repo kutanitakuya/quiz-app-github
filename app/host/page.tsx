@@ -71,6 +71,8 @@ const Host: React.FC = () => {
     showAnswerCheck?: boolean;
     currentQuestionIndex?: number;
   }>({});
+  const [isClearing, setIsClearing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   
 
   const handleChoiceChange = (index: number, value: string) => {
@@ -111,6 +113,29 @@ const Host: React.FC = () => {
     });
     return () => unsub();
   }, []);
+
+  const handleReset = async () => {
+    setIsResetting(true);
+    const ctrlRef = doc(db, 'quizControl', 'control');
+    await setDoc(ctrlRef, {
+      isQuizStarted: false,
+      isAnswerStarted: false,
+      showAnswerCounts: false,
+      showAnswerCheck: false,
+      currentQuestionIndex: 0,
+    });
+    setIsResetting(false);
+  };
+
+  const handleClearAnswers = async () => {
+    setIsClearing(true);
+    const ansCol = collection(db, 'answers');
+    const snap = await getDocs(ansCol);
+    await Promise.all(
+      snap.docs.map((d) => deleteDoc(doc(db, 'answers', d.id)))
+    );
+    setIsClearing(false);
+  };
 
   // 選択肢の数が変更されたときに choices の配列を更新
   // 2つまたは4つの選択肢を持つようにする。
@@ -364,6 +389,24 @@ const Host: React.FC = () => {
           disabled={!control.isQuizStarted}
         >
           次の問題へ
+        </Button>
+
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleReset}
+          disabled={isResetting}
+        >
+          {isResetting ? 'リセット中...' : '問題をリセット'}
+        </Button>
+
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={handleClearAnswers}
+          disabled={isClearing}
+        >
+          {isClearing ? 'クリア中...' : '全ての回答をクリア'}
         </Button>
       </Box>
 
