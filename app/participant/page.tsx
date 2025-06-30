@@ -150,11 +150,23 @@ const Participant: React.FC = () => {
           </Typography>
 
           {/* 選択肢カード */}
+          {control?.isAnswerStarted && ( // 回答スタートまでは選択肢を表示させない。
           <ToggleButtonGroup
             exclusive
             value={selectedChoice}
             onChange={handleChoiceToggle}
-            sx={{ flexWrap: 'wrap', gap: 2 }}
+            sx={{
+              flexWrap: 'wrap',
+              gap: 2,
+              // 通常の ToggleButton にも角丸を付ける
+              '& .MuiToggleButton-root': {
+                borderRadius: 2,
+              },
+              // grouped（グループ化）による角丸リセットを防止
+              '& .MuiToggleButtonGroup-grouped': {
+                borderRadius: 2,
+              },
+            }}
           >
             {question?.choices.map((c: any, idx: number) => {
               const choiceNo = idx + 1;
@@ -164,15 +176,34 @@ const Participant: React.FC = () => {
                 <ToggleButton
                   key={idx}
                   value={choiceNo}
-                  disabled={!control?.isAnswerStarted || submitted || control?.showAnswerCounts || control?.showAnswerCheck}
+                  disabled={
+                    !control?.isAnswerStarted ||
+                    submitted ||
+                    control?.showAnswerCounts ||
+                    control?.showAnswerCheck
+                  }
                   sx={{
                     p: 2,
                     borderRadius: 2,
                     boxShadow: 1,
                     textTransform: 'none',
                     position: 'relative',
-                    border: isCorrect ? '2px solid red' : undefined,
-                    '&.Mui-selected': { boxShadow: 3 },
+                    // 通常時のボーダー
+                    border: isCorrect
+                      ? '3px solid red'
+                      : '1px solid transparent',
+                    // disabled 状態でも赤枠をキープ
+                    '&.Mui-disabled': {
+                      border: isCorrect
+                        ? '3px solid red'
+                        : undefined,
+                      // opacity を戻して見えやすく
+                      opacity: 1,
+                    },
+                    // 選択時の影
+                    '&.Mui-selected': {
+                      boxShadow: 3,
+                    },
                   }}
                 >
                   <Box display="flex" flexDirection="column" alignItems="center">
@@ -211,22 +242,38 @@ const Participant: React.FC = () => {
               );
             })}
           </ToggleButtonGroup>
+          )}
 
           {/* ボタン／メッセージ */}
           {!submitted && control?.isAnswerStarted && !control?.showAnswerCounts && !control?.showAnswerCheck ? (
             <Button
               variant="contained"
-              sx={{ mt: 2 }}
+              sx={{ mt: 2 , justifyContent: 'center'}}
               disabled={selectedChoice == null}
               onClick={handleSubmit}
+              
             >
               回答
             </Button>
           ) : null}
+
+          {/* 回答済みメッセージ */}
           {submitted && !control?.showAnswerCounts && !control?.showAnswerCheck && (
-            <Typography variant="body1" sx={{ mt: 2 }}>
+            <Typography variant="body1" sx={{ mt: 2 }} alignItems="center">
               回答済みです。お待ちください。
             </Typography>
+          )}
+
+          {/* アンサーチェック結果 */}
+          {control?.showAnswerCheck && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6">
+                {selectedChoice === question.answer ? '正解です！' : 'はずれです・・・'}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                次の問題までしばらくお待ちください。
+              </Typography>
+            </Box>
           )}
         </>
       )}

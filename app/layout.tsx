@@ -3,7 +3,7 @@ import './global.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'クイズアプリ',
+  title: 'QuizApp',
   description: 'Next.jsで作るクイズアプリ',
 };
 

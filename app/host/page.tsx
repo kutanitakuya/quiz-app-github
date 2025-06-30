@@ -331,6 +331,7 @@ const Host: React.FC = () => {
             const ctrlRef = doc(db, 'quizControl', 'control');
             await setDoc(ctrlRef, { isQuizStarted: true }, { merge: true });
           }}
+          disabled={control.isQuizStarted}  // クイズ開始したら無効にする
         >
           クイズ開始
         </Button>
@@ -342,7 +343,10 @@ const Host: React.FC = () => {
             const ctrlRef = doc(db, 'quizControl', 'control');
             await setDoc(ctrlRef, { isAnswerStarted: true }, { merge: true });
           }}
-          disabled={!control.isQuizStarted}
+          disabled={
+            !control.isQuizStarted     // クイズ開始前は無効
+            || control.isAnswerStarted // 回答スタート済みなら無効
+          }
         >
           回答スタート
         </Button>
@@ -353,7 +357,10 @@ const Host: React.FC = () => {
             const ctrlRef = doc(db, 'quizControl', 'control');
             await setDoc(ctrlRef, { showAnswerCounts: true }, { merge: true });
           }}
-          disabled={!control.isAnswerStarted}
+          disabled={
+            !control.isAnswerStarted || 
+            control.showAnswerCounts
+          } // 回答スタート前は無効、または回答数表示済みなら無効
         >
           回答数表示
         </Button>
@@ -364,7 +371,10 @@ const Host: React.FC = () => {
             const ctrlRef = doc(db, 'quizControl', 'control');
             await setDoc(ctrlRef, { showAnswerCheck: true }, { merge: true });
           }}
-          disabled={!control.isAnswerStarted}
+          disabled={
+            !control.isAnswerStarted || 
+            control.showAnswerCheck
+          } // 回答スタート前は無効、またはアンサーチェック済みなら無効}
         >
           アンサーチェック
         </Button>
