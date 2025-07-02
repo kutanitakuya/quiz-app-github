@@ -188,6 +188,8 @@ const Participant: React.FC = () => {
                     boxShadow: 1,
                     textTransform: 'none',
                     position: 'relative',
+                    minHeight: 150,
+                    minWidth: 200,
                     // 通常時のボーダー
                     border: isCorrect
                       ? '3px solid red'
