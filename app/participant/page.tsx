@@ -11,6 +11,7 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  setDoc,
 } from 'firebase/firestore';
 import {
   Box,
@@ -32,6 +33,9 @@ const Participant: React.FC = () => {
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [counts, setCounts] = useState<number[]>([]);
+  const [results, setResults] = useState<
+    { userId: string; name: string; correctCount: number }[]
+  >([]);
 
   // 管理者画面の操作状況を購読
   useEffect(() => {
@@ -73,9 +77,11 @@ const Participant: React.FC = () => {
   }, [control?.currentQuestionIndex, control?.showAnswerCounts, control?.isAnswerStarted]);
 
   // 名前入力後に userId を生成
-  const handleJoin = () => {
+  const handleJoin = async () => {
     const id = `${name}_${crypto.randomUUID().slice(0, 8)}`;
     setUserId(id);
+    // participants コレクションに保存
+    await setDoc(doc(db, 'participants', id), { name });
   };
 
   // 回答選択切り替え
@@ -118,6 +124,73 @@ const Participant: React.FC = () => {
     }
   }, [control?.showAnswerCounts, question]);
 
+  // --- (2) showResult フラグ検知時の集計処理 ---
+  useEffect(() => {
+    if (!control?.showResult) return;
+
+    (async () => {
+      // ① 全参加者を取得
+      const partSnap = await getDocs(collection(db, 'participants'));
+      const users = partSnap.docs.map(d => ({
+        userId: d.id,
+        name: d.data().name as string
+      }));
+
+      // ② 全回答を取得
+      const ansSnap = await getDocs(collection(db, 'answers'));
+      const answers = ansSnap.docs.map(d => ({
+        userId: d.data().userId as string,
+        questionId: d.data().questionId as string,
+        choice: d.data().choice as number
+      }));
+
+      // ③ 問題の正解マップを作成
+      const answerMap = Object.fromEntries(
+        questions.map(q => [q.id, q.answer])
+      );
+
+      // ④ ユーザーごとに正解数をカウント
+      const countMap: Record<string, number> = {};
+      answers.forEach(a => {
+        if (a.choice === answerMap[a.questionId]) {
+          countMap[a.userId] = (countMap[a.userId] || 0) + 1;
+        }
+      });
+
+      // ⑤ 結果配列を生成し、正解数でソート
+      const ranked = users.map(u => ({
+        ...u,
+        correctCount: countMap[u.userId] || 0,
+      }))
+      .sort((a, b) => b.correctCount - a.correctCount);
+
+      setResults(ranked);
+    })();
+  }, [control?.showResult, questions]);
+
+    // --- レンダリングに結果画面を追加 ---
+  if (control?.showResult) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 4 }}>
+        <Typography variant="h5" gutterBottom>
+          結果発表
+        </Typography>
+        {results.length === 0 ? (
+          <CircularProgress />
+        ) : (
+          <Box component="ol" sx={{ pl: 2 }}>
+            {results.map((r, idx) => (
+              <Box component="li" key={r.userId} sx={{ mb: 1 }}>
+                <Typography>
+                  {idx + 1}位&nbsp;{r.name}&nbsp;—&nbsp;{r.correctCount}問正解
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Container>
+    );
+  }
   // レンダリング
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>

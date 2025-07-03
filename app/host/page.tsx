@@ -69,6 +69,7 @@ const Host: React.FC = () => {
     isAnswerStarted?: boolean;
     showAnswerCounts?: boolean;
     showAnswerCheck?: boolean;
+    showResult?: boolean;
     currentQuestionIndex?: number;
   }>({});
   const [isClearing, setIsClearing] = useState(false);
@@ -122,6 +123,7 @@ const Host: React.FC = () => {
       isAnswerStarted: false,
       showAnswerCounts: false,
       showAnswerCheck: false,
+      showResult: false,
       currentQuestionIndex: 0,
     });
     setIsResetting(false);
@@ -399,6 +401,28 @@ const Host: React.FC = () => {
           disabled={!control.isQuizStarted}
         >
           次の問題へ
+        </Button>
+
+        <Button
+          variant="contained"
+          onClick={async () => {
+            const nextIndex = (control.currentQuestionIndex ?? 0) + 1;
+            const ctrlRef = doc(db, 'quizControl', 'control');
+            await setDoc(
+              ctrlRef,
+              {
+                // フェーズのリセット
+                showResult: true,
+                isAnswerStarted: false,
+                showAnswerCounts: false,
+                showAnswerCheck: false,
+              },
+              { merge: true }
+            );
+          }}
+          disabled={!control.isQuizStarted || control.showResult}
+        >
+          結果発表
         </Button>
 
         <Button
