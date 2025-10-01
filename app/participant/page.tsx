@@ -76,13 +76,44 @@ const Participant: React.FC = () => {
     setCounts([]);
   }, [control?.currentQuestionIndex, control?.showAnswerCounts, control?.isAnswerStarted]);
 
+  // 初期化時に userId を復元
+  useEffect(() => {
+    const storedId = localStorage.getItem('quiz_userId');
+    const storedName = localStorage.getItem('quiz_name');
+    if (storedId) setUserId(storedId);
+    if (storedName) setName(storedName);
+  }, []);
+
   // 名前入力後に userId を生成
   const handleJoin = async () => {
-    const id = `${name}_${crypto.randomUUID().slice(0, 8)}`;
-    setUserId(id);
-    // participants コレクションに保存
-    await setDoc(doc(db, 'participants', id), { name });
+    const id = `${name.trim()}_${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      await setDoc(doc(db, 'participants', id), { name: name.trim(), joinedAt: serverTimestamp() });
+      setUserId(id);
+      localStorage.setItem('quiz_userId', id);
+      localStorage.setItem('quiz_name', name.trim());
+    } catch (e) {
+      console.error(e);
+    }
   };
+
+  // 自分の回答を購読（合成ID方式）
+  useEffect(() => {
+    if (!userId || !question?.id) return;
+    const answerId = `${question.id}_${userId}`;
+    const ref = doc(db, 'answers', answerId);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setSubmitted(true);
+        if (typeof data.choice === 'number') setSelectedChoice(data.choice);
+      } else {
+        setSubmitted(false);
+        setSelectedChoice(null);
+      }
+    });
+    return () => unsub();
+  }, [userId, question?.id]);
 
   // 回答選択切り替え
   const handleChoiceToggle = (
@@ -93,16 +124,22 @@ const Participant: React.FC = () => {
     setSelectedChoice(newValue);
   };
 
-  // 回答送信
+  // 回答送信（上書き方式）
   const handleSubmit = async () => {
-    if (!question || selectedChoice == null) return;
-    await addDoc(collection(db, 'answers'), {
-      userId,
-      questionId: question.id,
-      choice: selectedChoice,
-      timestamp: serverTimestamp(),
-    });
-    setSubmitted(true);
+    if (!question || selectedChoice == null || !userId) return;
+    const answerId = `${question.id}_${userId}`;
+    try {
+      await setDoc(doc(db, 'answers', answerId), {
+        userId,
+        questionId: question.id,
+        choice: selectedChoice,
+        timestamp: serverTimestamp(),
+      });
+      setSubmitted(true);
+    } catch (e) {
+      console.error(e);
+      // ここでエラーUIを出す
+    }
   };
 
   // 回答数取得
@@ -168,6 +205,10 @@ const Participant: React.FC = () => {
     })();
   }, [control?.showResult, questions]);
 
+  const isQuestionPhase =
+  !!control &&
+  (control.isAnswerStarted || control.showAnswerCounts || control.showAnswerCheck);
+
     // --- レンダリングに結果画面を追加 ---
   if (control?.showResult) {
     return (
@@ -192,6 +233,18 @@ const Participant: React.FC = () => {
     );
   }
   // レンダリング
+
+  // 問題フェーズなのに question 未取得 → ローディングで早期リターン
+  if (isQuestionPhase && !question) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 4 }}>
+        <Typography variant="h6" gutterBottom>問題を読み込み中…</Typography>
+        <CircularProgress />
+      </Container>
+    );
+  }
+
+  
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       {/* 名前入力 */}
@@ -243,7 +296,7 @@ const Participant: React.FC = () => {
           >
             {question?.choices.map((c: any, idx: number) => {
               const choiceNo = idx + 1;
-              const isCorrect = control?.showAnswerCheck && choiceNo === question.answer;
+              const isCorrect = control?.showAnswerCheck && question && (choiceNo === question.answer);
               const count = control?.showAnswerCounts ? counts[idx] : null;
               return (
                 <ToggleButton
@@ -340,7 +393,7 @@ const Participant: React.FC = () => {
           )}
 
           {/* アンサーチェック結果 */}
-          {control?.showAnswerCheck && (
+          {control?.showAnswerCheck && question && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="h6">
                 {selectedChoice === question.answer ? '正解です！' : 'はずれです・・・'}
