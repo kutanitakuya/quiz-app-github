@@ -28,6 +28,8 @@ import {
   CardContent,
   CircularProgress,
 } from "@mui/material";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { db, storage } from "@/src/lib/firebase";
 import {
   collection,
@@ -621,11 +623,54 @@ function TabPanel({ children, value, index }: { children: React.ReactNode; value
 
 export default function HostScreen() {
   const [tab, setTab] = useState(0);
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+      router.replace("/login");
+    } catch (error) {
+      console.error(error);
+    }
+  }, [logout, router]);
+
+  if (loading || !user) {
+    return (
+      <Box display="flex" alignItems="center" justifyContent="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <QuestionsProvider>
       <Container maxWidth="xl" sx={{ mt: 4, pb: 8 }}>
-        <Typography variant="h4" color="primary" gutterBottom>出題者画面</Typography>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          alignItems={{ xs: "flex-start", md: "center" }}
+          justifyContent="space-between"
+          gap={2}
+          mb={3}
+        >
+          <Typography variant="h4" color="primary">
+            出題者画面
+          </Typography>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <Typography variant="body2" color="text.secondary">
+              ログイン中: {user.email ?? "未設定"}
+            </Typography>
+            <Button variant="outlined" onClick={handleLogout}>
+              ログアウト
+            </Button>
+          </Stack>
+        </Stack>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons allowScrollButtonsMobile>
           <Tab label="進行" {...a11yProps(0)} />
           <Tab label="作成" {...a11yProps(1)} />
