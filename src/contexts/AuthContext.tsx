@@ -10,7 +10,11 @@ import {
 } from "react";
 import {
   User,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
@@ -20,7 +24,11 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  requestEmailVerification: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -45,8 +53,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const register = useCallback(async (email: string, password: string) => {
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
+    if (credential.user && !credential.user.emailVerified) {
+      await sendEmailVerification(credential.user);
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     await signOut(auth);
+  }, []);
+
+  const sendPasswordReset = useCallback(async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
+  }, []);
+
+  const requestEmailVerification = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (currentUser && !currentUser.emailVerified) {
+      await sendEmailVerification(currentUser);
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      await reload(currentUser);
+      setUser(currentUser);
+    }
   }, []);
 
   const value = useMemo(
@@ -54,9 +88,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       login,
+      register,
       logout,
+      requestEmailVerification,
+      refreshUser,
+      sendPasswordReset,
     }),
-    [user, loading, login, logout]
+    [user, loading, login, register, logout, requestEmailVerification, refreshUser, sendPasswordReset]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

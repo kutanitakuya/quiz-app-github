@@ -16,12 +16,14 @@ const firebaseConfig = {
     measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
   };
 
+  
 // Firebaseアプリの初期化
 const app = initializeApp(firebaseConfig);
 
 // Firestoreインスタンスを取得
 const db: Firestore = getFirestore(app);
 const auth = getAuth(app);
+auth.languageCode = "ja";
 export const storage = getStorage(app);
 
 export { db, auth };

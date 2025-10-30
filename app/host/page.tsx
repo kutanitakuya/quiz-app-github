@@ -1,16 +1,14 @@
 "use client";
 import React, { useEffect, useMemo, useState, useCallback, useContext } from "react";
 import {
+  Alert,
   Box,
   Button,
   Container,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
-  Radio,
-  RadioGroup,
   TextField,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -27,10 +25,12 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogContent,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/src/contexts/AuthContext";
-import { db, storage } from "@/src/lib/firebase";
+import { auth, db, storage } from "@/src/lib/firebase";
 import {
   collection,
   deleteDoc,
@@ -67,6 +67,8 @@ export type ReceiveQuestion = {
   timestamp: Timestamp;
   createdAt: Timestamp;
   answer: number;
+  ownerId: string;
+  quizId: string;
 };
 
 type ControlState = {
@@ -81,15 +83,17 @@ type ControlState = {
 };
 
 /** ======================== 共通: Firestore購読 ======================== */
-function useControl() {
+function useControl(ownerId: string | null) {
   const [control, setControl] = useState<ControlState>({});
   useEffect(() => {
-    const ctrlRef = doc(db, "quizControl", "control");
+    if (!ownerId) return;
+    const ctrlRef = doc(db, "quizControl", ownerId);
     const unsub = onSnapshot(ctrlRef, (snap) => {
       if (snap.exists()) setControl(snap.data() as ControlState);
+      else setControl({});
     });
     return () => unsub();
-  }, []);
+  }, [ownerId]);
   return control;
 }
 
@@ -107,25 +111,34 @@ function useQuestionsCtx() {
   return ctx;
 }
 
-function QuestionsProvider({ children }: { children: React.ReactNode }) {
+function QuestionsProvider({ ownerId, children }: { ownerId: string; children: React.ReactNode }) {
   const [questions, setQuestions] = useState<ReceiveQuestion[]>([]);
 
   // 初回にonSnapshotで購読 → 以降はリアルタイム更新。タブ切替では再購読しない。
   useEffect(() => {
-    const qRef = query(collection(db, "questions"), orderBy("createdAt", "asc"));
+    if (!ownerId) return;
+    const qRef = query(
+      collection(db, "questions"),
+      where("ownerId", "==", ownerId),
+      orderBy("createdAt", "asc")
+    );
     const unsub = onSnapshot(qRef, (snap) => {
       setQuestions(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ReceiveQuestion, "id">) }))
       );
     });
     return () => unsub();
-  }, []);
+  }, [ownerId]);
 
   const reload = useCallback(async () => {
-    const qRef = query(collection(db, "questions"), orderBy("createdAt", "asc"));
+    const qRef = query(
+      collection(db, "questions"),
+      where("ownerId", "==", ownerId),
+      orderBy("createdAt", "asc")
+    );
     const snap = await getDocs(qRef);
     setQuestions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ReceiveQuestion, "id">) })));
-  }, []);
+  }, [ownerId]);
 
   return (
     <QuestionsContext.Provider value={{ questions, reload }}>
@@ -135,14 +148,14 @@ function QuestionsProvider({ children }: { children: React.ReactNode }) {
 }
 
 /** ======================== 1) 進行コントロール ======================== */
-function ControlPanel() {
-  const control = useControl();
+function ControlPanel({ ownerId }: { ownerId: string }) {
+  const control = useControl(ownerId);
   const { questions } = useQuestionsCtx();
   const [isClearing, setIsClearing] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
   const setCtrl = async (patch: Partial<ControlState>) => {
-    const ctrlRef = doc(db, "quizControl", "control");
+    const ctrlRef = doc(db, "quizControl", ownerId);
     await setDoc(ctrlRef, patch, { merge: true });
   };
 
@@ -162,8 +175,8 @@ function ControlPanel() {
 
   const handleClearAnswers = async () => {
     setIsClearing(true);
-    const ansCol = collection(db, "answers");
-    const snap = await getDocs(ansCol);
+    const ansQ = query(collection(db, "answers"), where("quizId", "==", ownerId));
+    const snap = await getDocs(ansQ);
     await Promise.all(snap.docs.map((d) => deleteDoc(doc(db, "answers", d.id))));
     setIsClearing(false);
   };
@@ -217,13 +230,84 @@ function ControlPanel() {
         </Button>
       </Stack>
       <Divider />
-      <CurrentStatusCard control={control} question={currentQuestion} index={currentIndex} />
+      <CurrentStatusCard ownerId={ownerId} control={control} question={currentQuestion} index={currentIndex} />
     </Stack>
   );
 }
 
 /** ======================== 2) 作成フォーム ======================== */
-function CreateForm() {
+const MAX_QUESTIONS = 10;
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const MAX_IMAGE_DIMENSION = 1280;
+
+async function readFileAsDataURL(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+    img.src = dataUrl;
+  });
+}
+
+async function blobToDataURL(blob: Blob): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("画像の変換に失敗しました"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressImageFile(file: File): Promise<{ file: File; dataUrl: string }> {
+  try {
+    const originalDataUrl = await readFileAsDataURL(file);
+    const image = await loadImage(originalDataUrl);
+    const largestSide = Math.max(image.width, image.height);
+    const scale = largestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / largestSide : 1;
+
+    if (scale === 1 && file.size <= MAX_IMAGE_SIZE_BYTES) {
+      return { file, dataUrl: originalDataUrl };
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return { file, dataUrl: originalDataUrl };
+    }
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const mimeType = file.type?.startsWith("image/") ? file.type : "image/jpeg";
+    const quality = mimeType === "image/png" ? undefined : 0.85;
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error("画像の圧縮に失敗しました"));
+      }, mimeType, quality);
+    });
+
+    const compressedFile = new File([blob], file.name, { type: blob.type, lastModified: file.lastModified });
+    const dataUrl = await blobToDataURL(blob);
+    return { file: compressedFile, dataUrl };
+  } catch (error) {
+    console.error(error);
+    return { file, dataUrl: await readFileAsDataURL(file) };
+  }
+}
+
+function CreateForm({ ownerId }: { ownerId: string }) {
+  const { questions } = useQuestionsCtx();
   const [question, setQuestion] = useState("");
   const [choiceCount, setChoiceCount] = useState(4);
   const [choices, setChoices] = useState<Choice[]>([
@@ -245,15 +329,22 @@ function CreateForm() {
     });
   }, [choiceCount]);
 
+  const isLimitReached = questions.length >= MAX_QUESTIONS;
+
   const isFormIncomplete = useMemo(
     () =>
       question.trim() === "" ||
       choices.slice(0, choiceCount).some((c) => (c.text?.trim?.() ?? "") === "" && !c.file) ||
-      !duration || isNaN(duration) || selectedAnswer === null,
-    [question, choices, choiceCount, duration, selectedAnswer]
+      !duration || isNaN(duration) || selectedAnswer === null ||
+      isLimitReached,
+    [question, choices, choiceCount, duration, selectedAnswer, isLimitReached]
   );
 
   const addQuestion = async () => {
+    if (isLimitReached) {
+      alert(`登録できる問題は最大${MAX_QUESTIONS}問です。不要な問題を削除してから追加してください。`);
+      return;
+    }
     if (isFormIncomplete) return;
     setIsSubmitting(true);
     try {
@@ -277,7 +368,12 @@ function CreateForm() {
         answer: selectedAnswer,
         timestamp: serverTimestamp(),
         createdAt: serverTimestamp(),
+        ownerId,
+        quizId: ownerId,
       });
+      if (questions.length === MAX_QUESTIONS - 1) {
+        alert(`登録できる問題数（${MAX_QUESTIONS}問）に達しました。`);
+      }
 
       setQuestion("");
       setChoices([
@@ -300,6 +396,11 @@ function CreateForm() {
   return (
     <Stack gap={3}>
       <Typography variant="h5">✍️ 問題を作成</Typography>
+      {isLimitReached && (
+        <Alert severity="info">
+          登録できる問題は最大{MAX_QUESTIONS}問です。不要な問題を削除すると新しい問題を追加できます。
+        </Alert>
+      )}
 
       <TextField
         label="問題文"
@@ -310,17 +411,39 @@ function CreateForm() {
         onChange={(e) => setQuestion(e.target.value)}
       />
 
-      <FormControl>
-        <FormLabel>選択肢の数</FormLabel>
-        <RadioGroup value={choiceCount} onChange={(e) => setChoiceCount(Number(e.target.value))} row>
-          <FormControlLabel value={2} control={<Radio />} label="2つ" />
-          <FormControlLabel value={4} control={<Radio />} label="4つ" />
-        </RadioGroup>
-      </FormControl>
+      <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} gap={1.5}>
+        <Typography variant="subtitle2" color="text.secondary">選択肢の数</Typography>
+        <ToggleButtonGroup
+          value={choiceCount}
+          exclusive
+          onChange={(_, value) => {
+            if (value === null) return;
+            if (typeof value === "number") {
+              setChoiceCount(value);
+              setSelectedAnswer((prev) => (prev && prev > value ? null : prev));
+            }
+          }}
+          size="small"
+          sx={{
+            backgroundColor: "background.paper",
+            boxShadow: (theme) => theme.shadows[1],
+          }}
+        >
+          {[2, 4].map((count) => (
+            <ToggleButton
+              key={count}
+              value={count}
+              sx={{ border: "none", px: 2.5, py: 0.5, fontWeight: 600 }}
+            >
+              {count}つ
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Stack>
 
       <Stack direction="row" gap={2} flexWrap="wrap">
         {choices.slice(0, choiceCount).map((choice, idx) => (
-          <Box key={idx}>
+          <Box key={idx} sx={{ display: "flex", flexDirection: "column" }}>
             <TextField
               sx={{ mb: 0.5, minWidth: 220, maxWidth: 300 }}
               label={`選択肢 ${idx + 1}`}
@@ -332,18 +455,30 @@ function CreateForm() {
               }}
             />
             {!choice.file && !choice.imageUrl ? (
-              <Button variant="outlined" component="label">
+              <Button
+                variant="outlined"
+                component="label"
+                size="small"
+                sx={{ mt: 0, alignSelf: "flex-start", py: 0.5, px: 1.5 }}
+              >
                 + 画像
                 <input
                   type="file"
                   accept="image/*"
                   hidden
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    const { file: compressed, dataUrl } = await compressImageFile(file);
+                    if (compressed.size > MAX_IMAGE_SIZE_BYTES) {
+                      alert(`画像サイズは ${(MAX_IMAGE_SIZE_BYTES / (1024 * 1024)).toFixed(1)}MB 以下にしてください。`);
+                      return;
+                    }
                     const updated = [...choices];
-                    updated[idx].file = file;
+                    updated[idx].file = compressed;
+                    updated[idx].imageUrl = dataUrl;
                     setChoices(updated);
+                    e.target.value = "";
                   }}
                 />
               </Button>
@@ -362,14 +497,32 @@ function CreateForm() {
         ))}
       </Stack>
 
-      <FormControl>
-        <FormLabel>答え</FormLabel>
-        <RadioGroup value={selectedAnswer ?? ""} onChange={(e) => setSelectedAnswer(Number(e.target.value))} row>
+      <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} gap={1.5}>
+        <Typography variant="subtitle2" color="text.secondary">答え</Typography>
+        <ToggleButtonGroup
+          value={selectedAnswer}
+          exclusive
+          onChange={(_, value) => {
+            if (value === null) { setSelectedAnswer(null); return; }
+            if (typeof value === "number") setSelectedAnswer(value);
+          }}
+          size="small"
+          sx={{
+            backgroundColor: "background.paper",
+            boxShadow: (theme) => theme.shadows[1],
+          }}
+        >
           {choices.slice(0, choiceCount).map((_, idx) => (
-            <FormControlLabel key={idx} value={idx + 1} control={<Radio />} label={`${idx + 1}`} />
+            <ToggleButton
+              key={idx}
+              value={idx + 1}
+              sx={{ border: "none", px: 1.75, py: 0.5, fontWeight: 600 }}
+            >
+              {idx + 1}
+            </ToggleButton>
           ))}
-        </RadioGroup>
-      </FormControl>
+        </ToggleButtonGroup>
+      </Stack>
 
       <TextField
         label="制限時間（秒）"
@@ -390,11 +543,12 @@ function CreateForm() {
 }
 
 /** ======================== 3) 一覧＆編集 ======================== */
-function QuestionsTable() {
+function QuestionsTable({ ownerId }: { ownerId: string }) {
   const { questions } = useQuestionsCtx();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuestionData, setEditQuestionData] = useState<ReceiveQuestion | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const handleEditClick = (q: ReceiveQuestion) => {
     setEditingId(q.id);
@@ -403,6 +557,10 @@ function QuestionsTable() {
 
   const handleSaveClick = async () => {
     if (!editQuestionData) return;
+    if (editQuestionData.ownerId !== ownerId) {
+      alert("この問題を編集する権限がありません。");
+      return;
+    }
     setIsEditSubmitting(true);
     try {
       const uploadedChoices = await Promise.all(
@@ -447,6 +605,10 @@ function QuestionsTable() {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data() as ReceiveQuestion;
+        if (data.ownerId !== ownerId) {
+          alert("この問題を削除する権限がありません。");
+          return;
+        }
         for (const choice of data.choices) {
           if (typeof choice === "object" && choice.imageUrl) {
             try {
@@ -476,11 +638,11 @@ function QuestionsTable() {
           <TableHead>
             <TableRow>
               <TableCell sx={{ minWidth: 62 }}>番号</TableCell>
-              <TableCell sx={{ minWidth: 140 }}>問題</TableCell>
-              <TableCell sx={{ minWidth: 140 }}>選択肢1</TableCell>
-              <TableCell sx={{ minWidth: 140 }}>選択肢2</TableCell>
-              <TableCell sx={{ minWidth: 140 }}>選択肢3</TableCell>
-              <TableCell sx={{ minWidth: 140 }}>選択肢4</TableCell>
+              <TableCell sx={{ minWidth: 220 }}>問題</TableCell>
+              <TableCell sx={{ minWidth: 180 }}>選択肢1</TableCell>
+              <TableCell sx={{ minWidth: 180 }}>選択肢2</TableCell>
+              <TableCell sx={{ minWidth: 180 }}>選択肢3</TableCell>
+              <TableCell sx={{ minWidth: 180 }}>選択肢4</TableCell>
               <TableCell sx={{ minWidth: 62 }}>答え</TableCell>
               <TableCell sx={{ minWidth: 62 }}>時間</TableCell>
               <TableCell sx={{ minWidth: 120 }} align="center">操作</TableCell>
@@ -490,9 +652,13 @@ function QuestionsTable() {
             {questions.map((q, index) => (
               <TableRow key={q.id} hover>
                 <TableCell>{index + 1}</TableCell>
-                <TableCell>
+                <TableCell sx={{ verticalAlign: "center" }}>
                   {editingId === q.id ? (
                     <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={6}
                       value={editQuestionData?.question || ""}
                       onChange={(e) => setEditQuestionData((prev) => (prev ? { ...prev, question: e.target.value } : null))}
                     />
@@ -501,11 +667,14 @@ function QuestionsTable() {
                   )}
                 </TableCell>
                 {[0, 1, 2, 3].map((i) => (
-                  <TableCell key={i}>
+                  <TableCell key={i} sx={{ verticalAlign: "center" }}>
                     {editingId === q.id ? (
                       <>
                         <TextField
                           fullWidth
+                          multiline
+                          minRows={2}
+                          maxRows={5}
                           value={editQuestionData?.choices[i]?.text || ""}
                           onChange={(e) => {
                             if (!editQuestionData) return;
@@ -516,7 +685,13 @@ function QuestionsTable() {
                         />
                         {editQuestionData?.choices[i]?.imageUrl && !editQuestionData?.choices[i]?.deleted && (
                           <Box mt={1} display="flex" alignItems="center" gap={1}>
-                            <img src={editQuestionData.choices[i].imageUrl} alt={`選択肢${i + 1}`} style={{ maxHeight: 60 }} />
+                            <Box
+                              component="img"
+                              src={editQuestionData.choices[i].imageUrl}
+                              alt={`選択肢${i + 1}`}
+                              sx={{ maxHeight: 60, borderRadius: 1, cursor: "pointer" }}
+                              onClick={() => setPreviewImage(editQuestionData.choices[i].imageUrl)}
+                            />
                             <Button size="small" onClick={() => {
                               if (!editQuestionData) return;
                               const updatedChoices = [...editQuestionData.choices];
@@ -537,17 +712,18 @@ function QuestionsTable() {
                               type="file"
                               accept="image/*"
                               hidden
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file || !editQuestionData) return;
-                                const reader = new FileReader();
-                                reader.onload = () => {
-                                  const previewUrl = reader.result as string;
-                                  const updatedChoices = [...editQuestionData.choices];
-                                  updatedChoices[i] = { ...updatedChoices[i], imageUrl: previewUrl, file };
-                                  setEditQuestionData({ ...editQuestionData, choices: updatedChoices });
-                                };
-                                reader.readAsDataURL(file);
+                                const { file: compressed, dataUrl } = await compressImageFile(file);
+                                if (compressed.size > MAX_IMAGE_SIZE_BYTES) {
+                                  alert(`画像サイズは ${(MAX_IMAGE_SIZE_BYTES / (1024 * 1024)).toFixed(1)}MB 以下にしてください。`);
+                                  return;
+                                }
+                                const updatedChoices = [...editQuestionData.choices];
+                                updatedChoices[i] = { ...updatedChoices[i], imageUrl: dataUrl, file: compressed, deleted: false };
+                                setEditQuestionData({ ...editQuestionData, choices: updatedChoices });
+                                e.target.value = "";
                               }}
                             />
                           </Button>
@@ -557,7 +733,13 @@ function QuestionsTable() {
                       <>
                         {q.choices[i]?.text ?? ""}
                         {q.choices[i]?.imageUrl && (
-                          <img src={q.choices[i].imageUrl} alt={`選択肢${i + 1}`} style={{ display: "block", maxHeight: 60, marginTop: 4 }} />
+                          <Box
+                            component="img"
+                            src={q.choices[i].imageUrl}
+                            alt={`選択肢${i + 1}`}
+                            sx={{ display: "block", maxHeight: 60, mt: 0.5, borderRadius: 1, cursor: "pointer" }}
+                            onClick={() => setPreviewImage(q.choices[i]?.imageUrl ?? null)}
+                          />
                         )}
                       </>
                     )}
@@ -599,6 +781,16 @@ function QuestionsTable() {
           </TableBody>
         </Table>
       </TableContainer>
+      <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="lg">
+        <DialogContent sx={{ p: 2 }}>
+          <Box
+            component="img"
+            src={previewImage ?? undefined}
+            alt="画像プレビュー"
+            sx={{ maxWidth: { xs: "80vw", md: "70vw" }, maxHeight: { xs: "70vh", md: "80vh" }, display: "block" }}
+          />
+        </DialogContent>
+      </Dialog>
     </Stack>
   );
 }
@@ -623,14 +815,28 @@ function TabPanel({ children, value, index }: { children: React.ReactNode; value
 
 export default function HostScreen() {
   const [tab, setTab] = useState(0);
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, requestEmailVerification, refreshUser } = useAuth();
   const router = useRouter();
+  const [resending, setResending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const ownerId = user?.uid ?? "";
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/participant?quiz=${ownerId}` : "";
+  const [quizTitle, setQuizTitle] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login");
     }
   }, [loading, user, router]);
+  useEffect(() => {
+    if (user?.emailVerified) {
+      setInfoMessage(null);
+      setErrorMessage(null);
+    }
+  }, [user?.emailVerified]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -641,7 +847,61 @@ export default function HostScreen() {
     }
   }, [logout, router]);
 
-  if (loading || !user) {
+  useEffect(() => {
+    if (!ownerId) {
+      setQuizTitle("");
+      return;
+    }
+    const quizRef = doc(db, "quizzes", ownerId);
+    const unsub = onSnapshot(quizRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as { title?: string };
+        setQuizTitle(data.title ?? "");
+      } else {
+        setQuizTitle("");
+      }
+    });
+    return () => unsub();
+  }, [ownerId]);
+
+  const handleSaveTitle = useCallback(async () => {
+    if (!ownerId) return;
+    setIsSavingTitle(true);
+    try {
+      const normalized = quizTitle.replace(/\s+/g, "");
+      const value = normalized ? quizTitle : "クイズ大会";
+      await setDoc(
+        doc(db, "quizzes", ownerId),
+        { title: value, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      setInfoMessage("クイズ名を保存しました。");
+      setErrorMessage(null);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage("クイズ名の保存に失敗しました。時間を置いて再度お試しください。");
+    } finally {
+      setIsSavingTitle(false);
+    }
+  }, [ownerId, quizTitle]);
+
+  const handleCopyShareLink = useCallback(async () => {
+    if (!shareUrl) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setErrorMessage("お使いのブラウザではコピー機能が利用できません。リンクを手動で選択してください。");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setInfoMessage("共有リンクをコピーしました。参加者に共有してください。");
+      setErrorMessage(null);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage("共有リンクのコピーに失敗しました。");
+    }
+  }, [shareUrl]);
+
+  if (loading) {
     return (
       <Box display="flex" alignItems="center" justifyContent="center" minHeight="100vh">
         <CircularProgress />
@@ -649,44 +909,172 @@ export default function HostScreen() {
     );
   }
 
-  return (
-    <QuestionsProvider>
-      <Container maxWidth="xl" sx={{ mt: 4, pb: 8 }}>
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          alignItems={{ xs: "flex-start", md: "center" }}
-          justifyContent="space-between"
-          gap={2}
-          mb={3}
-        >
-          <Typography variant="h4" color="primary">
-            出題者画面
-          </Typography>
-          <Stack direction="row" alignItems="center" gap={1}>
-            <Typography variant="body2" color="text.secondary">
-              ログイン中: {user.email ?? "未設定"}
-            </Typography>
-            <Button variant="outlined" onClick={handleLogout}>
+  if (!user) {
+    return (
+      <Box display="flex" alignItems="center" justifyContent="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!user.emailVerified) {
+    const handleResendVerification = async () => {
+      setErrorMessage(null);
+      setInfoMessage(null);
+      setResending(true);
+      try {
+        await requestEmailVerification();
+        setInfoMessage("確認メールを再送しました。届かない場合は迷惑メールフォルダもご確認ください。");
+      } catch (err) {
+        console.error(err);
+        setErrorMessage("確認メールの再送に失敗しました。時間を置いて再度お試しください。");
+      } finally {
+        setResending(false);
+      }
+    };
+
+    const handleRefreshStatus = async () => {
+      setErrorMessage(null);
+      setInfoMessage(null);
+      setRefreshing(true);
+      try {
+        await refreshUser();
+        if (auth.currentUser?.emailVerified) {
+          setInfoMessage("メールアドレスが確認されました。画面を再読み込みします。");
+        } else {
+          setInfoMessage("まだ確認が完了していません。メール内のリンクを開いた後に再度更新してください。");
+        }
+      } catch (err) {
+        console.error(err);
+        setErrorMessage("確認状態の更新に失敗しました。時間を置いて再度お試しください。");
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
+    return (
+      <Container maxWidth="sm" sx={{ mt: 8 }}>
+        <Stack gap={3}>
+          <Typography variant="h5">メールアドレスの確認が必要です</Typography>
+          <Alert severity="info">
+            {user.email ?? "未設定"} に送信されたメール内のリンクを開いてアドレスを確認してください。
+          </Alert>
+          {infoMessage && <Alert severity="success">{infoMessage}</Alert>}
+          {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+          <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
+            <Button
+              variant="contained"
+              onClick={handleResendVerification}
+              disabled={resending}
+            >
+              {resending ? "再送信中..." : "確認メールを再送"}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleRefreshStatus}
+              disabled={refreshing}
+            >
+              {refreshing ? "確認中..." : "確認状態を再読み込み"}
+            </Button>
+            <Button variant="text" onClick={handleLogout}>
               ログアウト
             </Button>
           </Stack>
         </Stack>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons allowScrollButtonsMobile>
+      </Container>
+    );
+  }
+
+  return (
+    <QuestionsProvider ownerId={ownerId}>
+      <Container maxWidth="xl" sx={{ mt: 4, pb: 8 }}>
+        <Stack gap={2} mb={3}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            alignItems={{ xs: "flex-start", md: "center" }}
+            justifyContent="space-between"
+            gap={2}
+          >
+            <Typography variant="h4" color="primary">
+              出題者画面
+            </Typography>
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Typography variant="body2" color="text.secondary">
+                ログイン中: {user.email ?? "未設定"}
+              </Typography>
+              <Button variant="outlined" onClick={handleLogout}>
+                ログアウト
+              </Button>
+            </Stack>
+          </Stack>
+          {(infoMessage || errorMessage) && (
+            <Stack gap={1}>
+              {infoMessage && <Alert severity="success">{infoMessage}</Alert>}
+              {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+            </Stack>
+          )}
+          <Stack direction={{ xs: "column", md: "row" }} gap={1} alignItems={{ xs: "stretch", md: "center" }}>
+            <TextField
+              label="クイズ大会名"
+              value={quizTitle}
+              onChange={(e) => setQuizTitle(e.target.value)}
+              multiline
+              minRows={2}
+              fullWidth
+              placeholder="クイズ大会名を入力"
+            />
+            <Button
+              variant="outlined"
+              onClick={handleSaveTitle}
+              disabled={isSavingTitle || !ownerId}
+              sx={{ minWidth: { md: 160 } }}
+            >
+              {isSavingTitle ? "保存中..." : "クイズ名を保存"}
+            </Button>
+          </Stack>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            gap={1}
+            alignItems={{ xs: "stretch", md: "center" }}
+          >
+            <TextField
+              label="参加者用リンク"
+              value={shareUrl}
+              InputProps={{ readOnly: true }}
+              fullWidth
+            />
+            <Button
+              variant="contained"
+              onClick={handleCopyShareLink}
+              disabled={!ownerId}
+              sx={{ alignSelf: { xs: "flex-end", md: "center" }, minWidth: { md: 160 } }}
+            >
+              リンクをコピー
+            </Button>
+          </Stack>
+        </Stack>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons
+          allowScrollButtonsMobile
+        >
           <Tab label="進行" {...a11yProps(0)} />
           <Tab label="作成" {...a11yProps(1)} />
           <Tab label="一覧・編集" {...a11yProps(2)} />
         </Tabs>
 
         <TabPanel value={tab} index={0}>
-          <ControlPanel />
+          <ControlPanel ownerId={ownerId} />
         </TabPanel>
 
         <TabPanel value={tab} index={1}>
-          <CreateForm />
+          <CreateForm ownerId={ownerId} />
         </TabPanel>
 
         <TabPanel value={tab} index={2}>
-          <QuestionsTable />
+          <QuestionsTable ownerId={ownerId} />
         </TabPanel>
       </Container>
     </QuestionsProvider>
@@ -694,15 +1082,18 @@ export default function HostScreen() {
 }
 
 /** ======================== 進行状況カード ======================== */
-function useAnswerCounts(index: number, question?: ReceiveQuestion) {
+function useAnswerCounts(ownerId: string, question?: ReceiveQuestion) {
   const [counts, setCounts] = useState<number[]>([]);
   useEffect(() => {
-    if (index == null || !question) { setCounts([]); return; }
+    if (!question) { setCounts([]); return; }
     const size = Math.min(4, question.choices.filter(Boolean).length || 4);
     const col = collection(db, 'answers');
-    // 既定: questionIndex で集計（questionId運用の場合は下のコメントを使って切替）
-    const qByIndex = query(col, where('questionIndex', '==', index));
-    const unsub = onSnapshot(qByIndex, (snap) => {
+    const qByQuestion = query(
+      col,
+      where('quizId', '==', ownerId),
+      where('questionId', '==', question.id)
+    );
+    const unsub = onSnapshot(qByQuestion, (snap) => {
       const arr = new Array(size).fill(0);
       snap.forEach((d) => {
         const ch = (d.data() as any).choice; // 1-based想定
@@ -711,15 +1102,22 @@ function useAnswerCounts(index: number, question?: ReceiveQuestion) {
       setCounts(arr);
     });
     return () => unsub();
-
-    // questionIdで集計したい場合の例：
-    // const qById = query(col, where('questionId', '==', question.id));
-  }, [index, question?.id]);
+  }, [ownerId, question?.id, question?.choices]);
   return counts;
 }
 
-function CurrentStatusCard({ control, question, index }: { control: ControlState; question?: ReceiveQuestion; index: number; }) {
-  const counts = useAnswerCounts(index, question);
+function CurrentStatusCard({
+  ownerId,
+  control,
+  question,
+  index,
+}: {
+  ownerId: string;
+  control: ControlState;
+  question?: ReceiveQuestion;
+  index: number;
+}) {
+  const counts = useAnswerCounts(ownerId, question);
   const phase = control.showResult
     ? '結果発表'
     : control.showAnswerCheck
