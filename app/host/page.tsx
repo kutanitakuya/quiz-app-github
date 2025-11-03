@@ -79,7 +79,7 @@ type ControlState = {
   showResult?: boolean;
   currentQuestionIndex?: number;
   /** 回答開始時刻（進行状況の可視化用） */
-  answerStartAt?: Timestamp;
+  answerStartAt?: Timestamp | import("firebase/firestore").FieldValue;
 };
 
 /** ======================== 共通: Firestore購読 ======================== */
