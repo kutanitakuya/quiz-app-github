@@ -690,7 +690,7 @@ function QuestionsTable({ ownerId }: { ownerId: string }) {
                               src={editQuestionData.choices[i].imageUrl}
                               alt={`選択肢${i + 1}`}
                               sx={{ maxHeight: 60, borderRadius: 1, cursor: "pointer" }}
-                              onClick={() => setPreviewImage(editQuestionData.choices[i].imageUrl)}
+                              onClick={() => setPreviewImage(editQuestionData.choices[i].imageUrl ?? null)}
                             />
                             <Button size="small" onClick={() => {
                               if (!editQuestionData) return;
@@ -1136,11 +1136,20 @@ function CurrentStatusCard({
     if (!control.isAnswerStarted || !control.answerStartAt || !duration) return;
     const t = setInterval(() => setNow(new Date()), 500);
     return () => clearInterval(t);
-  }, [control.isAnswerStarted, control.answerStartAt?.seconds, duration]);
+  }, [
+    control.isAnswerStarted,
+    (control.answerStartAt && "seconds" in control.answerStartAt) ? (control.answerStartAt as Timestamp).seconds : undefined,
+    duration
+  ]);
 
   let progress = 0;
-  if (control.isAnswerStarted && control.answerStartAt && duration) {
-    const started = control.answerStartAt.toDate().getTime();
+  if (
+    control.isAnswerStarted &&
+    control.answerStartAt &&
+    duration &&
+    typeof (control.answerStartAt as Timestamp).toDate === "function"
+  ) {
+    const started = (control.answerStartAt as Timestamp).toDate().getTime();
     const elapsed = (now.getTime() - started) / 1000;
     progress = Math.max(0, Math.min(100, (elapsed / duration) * 100));
   }
