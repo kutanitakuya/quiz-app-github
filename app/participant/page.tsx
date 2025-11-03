@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { db } from "@/src/lib/firebase";
 import {
@@ -26,6 +26,7 @@ import {
   Fade,
   LinearProgress,
   Stack,
+  CircularProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
@@ -54,7 +55,7 @@ const floatingOrb = keyframes`
   50% { transform: translateY(18px); }
 `;
 
-const Participant: React.FC = () => {
+const ParticipantContent: React.FC = () => {
   const searchParams = useSearchParams();
   const [quizId, setQuizId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -749,4 +750,30 @@ const Participant: React.FC = () => {
   );
 };
 
-export default Participant;
+function ParticipantFallback() {
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#0f172a",
+        color: "white",
+      }}
+    >
+      <Stack spacing={2} alignItems="center">
+        <Typography variant="h6">読み込み中です…</Typography>
+        <CircularProgress color="inherit" />
+      </Stack>
+    </Box>
+  );
+}
+
+export default function Participant() {
+  return (
+    <Suspense fallback={<ParticipantFallback />}>
+      <ParticipantContent />
+    </Suspense>
+  );
+}
