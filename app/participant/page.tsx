@@ -75,6 +75,7 @@ const ParticipantContent: React.FC = () => {
   const prevShowAnswerCheckRef = useRef(false);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timeAnimRef = useRef<number | null>(null);
+  const [revealedCount, setRevealedCount] = useState(0);
 
   const showAnswerCheck = Boolean(control?.showAnswerCheck);
   const correctChoiceIndex = question?.answer ?? null;
@@ -371,6 +372,10 @@ const ParticipantContent: React.FC = () => {
   const progressPercent = question?.duration
     ? Math.max(0, Math.min(100, (timeLeft != null ? timeLeft : question.duration) / question.duration * 100))
     : 0;
+  const rankedResults = useMemo(
+    () => [...results].sort((a, b) => b.correctCount - a.correctCount),
+    [results]
+  );
 
   useEffect(() => {
     const prev = prevShowAnswerCheckRef.current;
@@ -404,6 +409,32 @@ const ParticipantContent: React.FC = () => {
       hideTimeoutRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (!control?.showResult || !rankedResults.length) {
+      setRevealedCount(0);
+      return;
+    }
+    setRevealedCount(0);
+    let revealed = 0;
+
+    const scheduleNext = () => {
+      if (revealed >= rankedResults.length) return;
+      const delay = revealed < 3 ? 1000 : 2000;
+      timer = setTimeout(() => {
+        revealed += 1;
+        setRevealedCount((prev) => Math.min(rankedResults.length, prev + 1));
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [control?.showResult, rankedResults.length]);
 
   if (!quizId) {
     return (
@@ -669,14 +700,49 @@ const ParticipantContent: React.FC = () => {
               <Typography align="center">現在進行中の問題はありません。</Typography>
             )}
 
-            {control?.showResult && results.length > 0 && (
-              <Stack gap={1}>
+            {control?.showResult && rankedResults.length > 0 && (
+              <Stack gap={2} mt={2}>
                 <Typography variant="h6">結果発表</Typography>
-                {results.map((res, index) => (
-                  <Typography key={res.userId}>
-                    {index + 1}位: {res.name}（正解 {res.correctCount} 問）
-                  </Typography>
-                ))}
+                <Typography variant="caption" color="text.secondary">
+                  {revealedCount < rankedResults.length
+                    ? "下位から順に発表中…"
+                    : "すべての順位が出揃いました！"}
+                </Typography>
+                <Stack gap={1.5}>
+                  {rankedResults.map((res, index) => {
+                    const rank = index + 1;
+                    const isVisible = rankedResults.length - index <= revealedCount;
+                    if (!isVisible) return null;
+                    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
+                    return (
+                      <Box
+                        key={res.userId}
+                        sx={{
+                          borderRadius: 3,
+                          border: "1px solid rgba(15,23,42,0.08)",
+                          backgroundColor: "rgba(255,255,255,0.9)",
+                          px: 3,
+                          py: 2,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="subtitle2" color="text.primary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                            第 {rank} 位 {medal && <Box component="span">{medal}</Box>}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {res.name}
+                          </Typography>
+                        </Box>
+                        <Typography variant="subtitle1" fontWeight={600} color="text.primary">
+                          {res.correctCount} 問正解
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Stack>
               </Stack>
             )}
           </>

@@ -2,257 +2,296 @@
 
 import Link from 'next/link';
 
+const scenes = [
+  { title: '忘年会・新年会', description: '部署対抗や豪華景品の抽選にぴったり。', emoji: '🎉' },
+  { title: '結婚式余興', description: '新郎新婦のクイズでゲスト全員が大盛り上がり。', emoji: '💒' },
+  { title: '会社イベント', description: '社内表彰や研修にも使えるインタラクティブ演出。', emoji: '🏢' },
+  { title: '学校・地域イベント', description: '文化祭や町内イベントで子どもから大人まで楽しめる。', emoji: '🏫' },
+];
+
 const features = [
   {
-    title: '数クリックでクイズ作成',
-    description:
-      '直感的なUIで問題文・画像・正解を登録。リアルタイムに編集内容が反映されるので、チームでも安心して運用できます。',
-    icon: '🛠️',
-  },
-  {
-    title: 'ライブ集計＆可視化',
-    description:
-      '回答状況や結果をリアルタイムで監視し、アンサーチェックも即表示。進行と観察を同時にこなせます。',
+    title: 'リアルタイム集計',
+    body: '回答状況が秒単位で変動。番組さながらの緊張感で盛り上がります。',
     icon: '📊',
   },
   {
-    title: '参加者も快適な体験',
-    description:
-      'モバイル最適化されたUI、滑らかなタイマー、パワフルなフィードバックで参加者を飽きさせません。',
-    icon: '✨',
+    title: '10問まで無料作成',
+    body: 'お試し利用に十分なボリューム。課金なしで全機能を体験できます。',
+    icon: '🎁',
+  },
+  {
+    title: 'スマホ参加OK',
+    body: 'URLやQRコードを配るだけ。アプリ不要で誰でもすぐ参加。',
+    icon: '📱',
+  },
+  {
+    title: '司会者モード',
+    body: 'スタート・締切・正解発表をワンタップで操作。進行が驚くほど楽に。',
+    icon: '🎤',
   },
 ];
 
 const steps = [
+  { step: '1', title: 'クイズを作る', detail: '問題文・画像・正解を入力するだけ。' },
+  { step: '2', title: 'URL/QRを共有', detail: '参加者はスマホでアクセスして待機。' },
+  { step: '3', title: '司会者がスタート', detail: 'リアルタイムに集計しながらイベントを盛り上げる！' },
+];
+
+const reviews = [
   {
-    title: '1. アカウント作成',
-    description:
-      'メールアドレスとパスワードでホスト用アカウントを登録。メール確認後すぐにクイズ作成が始められます。',
+    quote: '忘年会で一番盛り上がりました。タイマー演出が最高！',
+    name: '広告代理店 / 幹事 A さん',
   },
   {
-    title: '2. クイズを登録',
-    description:
-      '文章や画像付きの設問を最大全10問まで登録。制限時間や解説など、必要な情報をワンストップで設定可能です。',
+    quote: '結婚式の余興で新郎新婦クイズを実施。ゲスト全員が参加できて大満足でした。',
+    name: '新郎新婦のお友だち B さん',
   },
   {
-    title: '3. リンクを共有',
-    description:
-      '発行された参加用URLを共有するだけ。参加者はブラウザからアクセスし、その場で回答を送信できます。',
-  },
-  {
-    title: '4. ライブ配信',
-    description:
-      '進行画面でタイマーをスタートし、アンサーチェックや結果発表をワンクリックで操作。会場もオンライン配信もお任せ。',
+    quote: '司会がボタンひとつで進められるので、当日の段取りがぐっと楽になりました。',
+    name: 'IT企業 / 司会 C さん',
   },
 ];
 
 const faqs = [
-  {
-    question: '料金はかかりますか？',
-    answer:
-      '現在は無料でご利用いただけます。今後、商用利用に応じたプランを展開予定です。',
-  },
-  {
-    question: '画像サイズに制限はありますか？',
-    answer:
-      'はい。アップロード時に自動で圧縮・リサイズし、2MB以内に収まるよう最適化しています。',
-  },
-  {
-    question: 'インストールは必要ですか？',
-    answer:
-      'ブラウザだけで完結します。PC・タブレット・スマートフォンで利用可能です。',
-  },
-  {
-    question: '同時参加者は何人まで？',
-    answer:
-      'リアルタイムの参加者数に制限はありません。Firebaseのプランに応じてスケールします。',
-  },
+  { q: '何人まで参加できますか？', a: 'Firebase を利用しているため数百人規模でも問題ありません。' },
+  { q: 'スマホだけで参加できますか？', a: 'ブラウザがあればOK。アプリのインストールは不要です。' },
+  { q: '無料で使えますか？', a: 'はい。10問までのクイズ作成やライブ配信は無料です。' },
+  { q: '機械や専用の知識は必要ですか？', a: '必要ありません。司会者画面のボタンを押すだけで進行できます。' },
 ];
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
-      <header className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.25),transparent)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(16,185,129,0.2),transparent)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_80%,rgba(244,114,182,0.18),transparent)]" />
-
-        <nav className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 text-2xl font-bold">
-              Q
-            </span>
-            <div>
-              <p className="text-xl font-semibold tracking-wide">QuizLive</p>
-              <p className="text-xs text-slate-300/80">瞬間で盛り上げるライブクイズ体験</p>
+    <div className="min-h-screen bg-white text-slate-900">
+      {/* hero */}
+      <header className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-white to-sky-100">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(248,113,113,0.25),transparent)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(59,130,246,0.2),transparent)]" />
+        <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-10 px-6 py-12 lg:flex-row lg:items-center">
+          <div className="flex-1 space-y-6">
+            <p className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-sm font-medium text-amber-600 shadow">
+              新しいイベント定番ツール
+            </p>
+            <h1 className="text-4xl font-extrabold leading-tight text-slate-900 sm:text-5xl">
+              オールスター感謝祭風のクイズを、あなたのイベントに。
+            </h1>
+            <p className="text-lg text-slate-600">
+              スマホで参加・リアルタイム集計。忘年会や結婚式・会社イベントで誰でも番組MCの気分に。
+            </p>
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <Link
+                href="/host"
+                className="rounded-full bg-rose-500 px-8 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-rose-200 transition hover:bg-rose-400"
+              >
+                無料でクイズを作る
+              </Link>
+              <Link
+                href="/participant"
+                className="rounded-full border border-rose-200 px-8 py-3 text-center text-sm font-semibold text-rose-500 transition hover:border-rose-300 hover:text-rose-600"
+              >
+                デモを見る
+              </Link>
+            </div>
+            <p className="text-xs text-slate-500">インストール不要・ブラウザだけで完結します。</p>
+          </div>
+          <div className="flex-1">
+            <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-xl shadow-rose-200">
+              <div className="aspect-[4/3] rounded-2xl bg-gradient-to-br from-rose-100 via-orange-50 to-white p-4 shadow-inner">
+                <div className="h-full w-full rounded-2xl border border-dashed border-white/60 bg-white/80 p-4 text-center text-sm text-slate-400">
+                  アプリ画面のモック（ランキング＋問題）をここに配置
+                </div>
+              </div>
             </div>
           </div>
-          <div className="hidden items-center gap-4 md:flex">
-            <Link
-              href="/donate"
-              className="rounded-full border border-white/30 px-4 py-2 text-sm font-medium text-white/90 transition hover:border-white hover:text-white"
-            >
-              寄付する
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-full border border-white/30 px-4 py-2 text-sm font-medium text-white/90 transition hover:border-white hover:text-white"
-            >
-              ログイン
-            </Link>
-            <Link
-              href="/host"
-              className="rounded-full bg-gradient-to-r from-blue-500 to-blue-400 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/40 transition hover:from-blue-400 hover:to-blue-300"
-            >
-              今すぐ試す
-            </Link>
-          </div>
-        </nav>
-
-        <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pb-24 pt-16 text-center">
-          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1 text-sm text-white/80 backdrop-blur">
-            <span className="text-lg">🚀</span>
-            新機能: 画像付きクイズと滑らかなライブ結果
-          </span>
-          <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
-            観客を熱狂させるライブクイズを、誰でも数分で。
-          </h1>
-          <p className="mt-6 max-w-3xl text-base text-white/70 sm:text-lg">
-            QuizLive は、イベントや配信、社内レクリエーション向けに設計されたライブクイズプラットフォーム。
-            問題作成・参加者管理・リアルタイム集計をワンストップで提供します。
-          </p>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
-            <Link
-              href="/host"
-              className="rounded-full bg-gradient-to-r from-blue-500 to-teal-400 px-8 py-3 text-base font-semibold text-white shadow-xl shadow-blue-500/40 transition hover:scale-[1.01] hover:from-blue-400 hover:to-teal-300"
-            >
-              無料でホストを始める
-            </Link>
-            <Link
-              href="/donate"
-              className="rounded-full border border-white/40 px-8 py-3 text-base font-semibold text-white/90 transition hover:border-white hover:text-white"
-            >
-              開発を支援する
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-full border border-white/40 px-8 py-3 text-base font-semibold text-white/90 transition hover:border-white hover:text-white"
-            >
-              ログインして続きから再開
-            </Link>
-          </div>
-          <p className="mt-4 text-xs text-white/60">
-            登録不要の参加者URLで誰でもすぐ回答できます。寄付でプロジェクトを応援いただけます。
-          </p>
         </div>
       </header>
 
-      <main className="relative z-10 space-y-24 pb-24">
-        <section className="mx-auto max-w-6xl px-6 mt-16">
-          <div className="grid gap-8 md:grid-cols-3">
+      <main className="space-y-20 pb-20">
+        {/* scene cards */}
+        <section className="bg-amber-50 py-16">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="mb-10 text-center">
+              <p className="text-sm font-semibold uppercase tracking-widest text-rose-500">
+                イベントを“誰でも盛り上げられる”ツールです
+              </p>
+              <h2 className="mt-4 text-3xl font-bold text-slate-900">シーン別の活用例</h2>
+              <p className="mt-2 text-slate-600">大人数でも小規模でもOK。参加者全員がスマホで楽しめます。</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {scenes.map((scene) => (
+                <div
+                  key={scene.title}
+                  className="rounded-3xl border border-white/70 bg-white p-6 text-center shadow-sm shadow-orange-100"
+                >
+                  <div className="text-3xl">{scene.emoji}</div>
+                  <h3 className="mt-3 text-lg font-semibold">{scene.title}</h3>
+                  <p className="mt-1 text-sm text-slate-600">{scene.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* features */}
+        <section className="mx-auto max-w-6xl px-6">
+          <div className="mb-10 text-center">
+            <p className="text-sm font-semibold uppercase tracking-widest text-sky-500">
+              番組のようなドキドキ感を実現する機能
+            </p>
+            <h2 className="mt-4 text-3xl font-bold text-slate-900">QuizLive の特徴</h2>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2">
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-lg shadow-black/20 backdrop-blur transition hover:translate-y-[-4px] hover:bg-white/10"
+                className="flex gap-4 rounded-3xl border border-slate-100 bg-white p-6 shadow-lg shadow-slate-100"
               >
-                <div className="mb-4 text-3xl">{feature.icon}</div>
-                <h3 className="text-xl font-semibold text-white">{feature.title}</h3>
-                <p className="mt-4 text-sm leading-relaxed text-white/70">{feature.description}</p>
+                <div className="text-3xl">{feature.icon}</div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{feature.title}</h3>
+                  <p className="mt-2 text-sm text-slate-600">{feature.body}</p>
+                </div>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mx-auto max-w-5xl px-6">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">3分で分かる使い方</h2>
-            <p className="mt-3 text-white/60">
-              ホストも参加者も迷わないシンプルなプロセス。初めてでもすぐにライブクイズが開催できます。
-            </p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2">
-            {steps.map((step) => (
-              <div
-                key={step.title}
-                className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/[0.03] p-6 shadow-lg shadow-black/10 backdrop-blur"
-              >
-                <h3 className="text-lg font-semibold text-white">{step.title}</h3>
-                <p className="mt-3 text-sm text-white/70">{step.description}</p>
+        {/* mock demo */}
+        <section className="bg-gradient-to-br from-sky-50 to-rose-50 py-16">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="mb-12 text-center">
+              <p className="text-sm font-semibold uppercase tracking-widest text-sky-500">
+                デモイメージ
+              </p>
+              <h2 className="mt-4 text-3xl font-bold text-slate-900">番組風の画面をそのまま再現</h2>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <div className="rounded-[40px] border-4 border-white bg-white shadow-2xl">
+                  <div className="rounded-[36px] border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-10 text-center text-slate-400">
+                    スマホのモックアップ（問題画面）
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-5xl px-6">
-          <div className="rounded-3xl bg-gradient-to-br from-blue-600/30 to-indigo-600/20 p-10 shadow-xl shadow-blue-900/30 backdrop-blur">
-            <div className="flex flex-col gap-8 md:flex-row md:items-center">
-              <div className="md:w-1/2">
-                <h2 className="text-3xl font-bold text-white sm:text-4xl">感動のあるクイズイベントを。</h2>
-                <p className="mt-4 text-sm leading-relaxed text-white/70">
-                  ライブ会場、ウェビナー、学習イベント、社内研修ーーあらゆるシーンで QuizLive が活躍します。
-                  制限時間アニメーションや回答フィードバックなど、参加者が熱中する仕掛けを多数搭載。
-                </p>
-              </div>
-              <div className="md:w-1/2">
-                <div className="rounded-2xl border border-white/20 bg-white/10 p-6 shadow-lg shadow-blue-900/20">
-                  <ul className="space-y-3 text-sm text-white/80">
-                    <li className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xl">✅</span>
-                      <p>ホスト画面から参加リンクを即発行。共有もラクラク。</p>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xl">✅</span>
-                      <p>参加者画面はスマホ最適化済み。滑らかなタイマーとアニメーション。</p>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xl">✅</span>
-                      <p>回答状況・結果をリアルタイム集計。アンサーチェックもワンタップ。</p>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xl">✅</span>
-                      <p>画像付き設問を自動圧縮＆最適化。アップロードもスムーズです。</p>
-                    </li>
-                  </ul>
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-white bg-white p-6 text-center text-slate-400 shadow">
+                  ライブ回答状況のイメージ
+                </div>
+                <div className="rounded-3xl border border-white bg-white p-6 text-center text-slate-400 shadow">
+                  ランキング画面のイメージ
                 </div>
               </div>
             </div>
           </div>
         </section>
 
+        {/* steps */}
         <section className="mx-auto max-w-5xl px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">よくあるご質問</h2>
-            <p className="mt-3 text-white/60">導入前の不安を解消するためのFAQをご用意しました。</p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-amber-500">
+              準備はたった3ステップ
+            </p>
+            <h2 className="mt-3 text-3xl font-bold text-slate-900">誰でもすぐ始められます</h2>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {steps.map((step) => (
+              <div key={step.step} className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+                <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 font-semibold text-rose-500">
+                  {step.step}
+                </div>
+                <h3 className="text-lg font-semibold">{step.title}</h3>
+                <p className="mt-2 text-sm text-slate-600">{step.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* reviews */}
+        <section className="bg-white py-16">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="mb-10 text-center">
+              <p className="text-sm font-semibold uppercase tracking-widest text-rose-500">
+                利用者の声
+              </p>
+              <h2 className="mt-4 text-3xl font-bold text-slate-900">
+                使ってみたら、イベントが本当に “変わった”！
+              </h2>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3">
+              {reviews.map((review) => (
+                <div key={review.quote} className="rounded-3xl border border-slate-100 bg-white p-6 shadow-lg shadow-slate-100">
+                  <p className="text-sm text-slate-700">“{review.quote}”</p>
+                  <p className="mt-4 text-xs font-semibold text-slate-500">{review.name}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="mx-auto max-w-5xl px-6">
+          <div className="mb-10 text-center">
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">よくある質問</p>
+            <h2 className="mt-3 text-3xl font-bold text-slate-900">FAQ</h2>
           </div>
           <div className="space-y-4">
             {faqs.map((faq) => (
-              <details
-                key={faq.question}
-                className="group rounded-2xl border border-white/10 bg-white/5 px-6 py-4 shadow-lg shadow-black/10 backdrop-blur"
-              >
-                <summary className="flex cursor-pointer items-center justify-between text-left text-white">
-                  <span className="text-sm font-semibold">{faq.question}</span>
-                  <span className="text-xl transition group-open:rotate-45">+</span>
+              <details key={faq.q} className="group rounded-2xl border border-slate-100 bg-white px-6 py-4 shadow-sm">
+                <summary className="flex cursor-pointer items-center justify-between text-left text-base font-semibold text-slate-800">
+                  <span>{faq.q}</span>
+                  <span className="text-xl text-slate-400 transition group-open:rotate-45">+</span>
                 </summary>
-                <p className="mt-3 text-sm text-white/70">{faq.answer}</p>
+                <p className="mt-3 text-sm text-slate-600">{faq.a}</p>
               </details>
             ))}
           </div>
         </section>
+
+        {/* final CTA */}
+        <section className="bg-gradient-to-r from-rose-500 to-sky-500 py-16 text-white">
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-6 text-center">
+            <h2 className="text-3xl font-extrabold">
+              あなたのイベントを、もっとワクワクさせよう！
+            </h2>
+            <p className="max-w-3xl text-sm text-white/90">
+              スマホ1つで、司会者も参加者も、番組のような興奮を味わえます。今すぐ無料でクイズを作ってみませんか？
+            </p>
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <Link
+                href="/host"
+                className="rounded-full bg-white px-8 py-3 text-sm font-semibold text-rose-500 shadow-lg shadow-rose-200 hover:bg-rose-50"
+              >
+                無料でクイズを作る
+              </Link>
+              <Link
+                href="/participant"
+                className="rounded-full border border-white/60 px-8 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                デモを見る
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
 
-      <footer className="border-t border-white/5 bg-black/30 py-10 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-6 text-sm text-white/60 md:flex-row">
-          <p>© {new Date().getFullYear()} QuizLive. All rights reserved.</p>
+      <footer className="border-t border-slate-100 bg-white py-10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 text-sm text-slate-500 md:flex-row md:justify-between">
+          <div className="flex items-center gap-2 text-slate-700">
+            <span className="text-xl font-bold text-rose-500">QuizLive</span>
+            <span>© {new Date().getFullYear()}</span>
+          </div>
           <div className="flex items-center gap-4">
-            <Link href="/login" className="hover:text-white">
+            <Link href="/login" className="hover:text-slate-700">
               ログイン
             </Link>
-            <Link href="/host" className="hover:text-white">
+            <Link href="/host" className="hover:text-slate-700">
               ホスト用ダッシュボード
             </Link>
-            <Link href="/participant" className="hover:text-white">
-              参加者用リンク
+            <Link href="/donate" className="hover:text-slate-700">
+              寄付する
+            </Link>
+            <Link href="/participant" className="hover:text-slate-700">
+              参加者デモ
             </Link>
           </div>
         </div>

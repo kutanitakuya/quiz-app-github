@@ -185,50 +185,129 @@ function ControlPanel({ ownerId }: { ownerId: string }) {
   const currentQuestion = questions[currentIndex];
 
   return (
-    <Stack gap={2}>
+    <Stack gap={3}>
       <Typography variant="h5">🕹️ クイズ進行</Typography>
-      <Stack direction={{ xs: "column", md: "row" }} gap={1} flexWrap="wrap">
-        <Button
-          variant="contained"
-          onClick={() => setCtrl({ isQuizStarted: true })}
-          disabled={!!control.isQuizStarted}
-        >クイズ開始</Button>
-        <Button
-          variant="contained"
-          color="secondary"
-          onClick={() => setCtrl({ isAnswerStarted: true, answerStartAt: serverTimestamp() })}
-          disabled={!control.isQuizStarted || !!control.isAnswerStarted}
-        >回答スタート</Button>
-        <Button
-          variant="contained"
-          onClick={() => setCtrl({ showAnswerCounts: true })}
-          disabled={!control.isAnswerStarted || !!control.showAnswerCounts}
-        >回答数表示</Button>
-        <Button
-          variant="contained"
-          onClick={() => setCtrl({ showAnswerCheck: true })}
-          disabled={!control.isAnswerStarted || !!control.showAnswerCheck}
-        >アンサーチェック</Button>
-        <Button
-          variant="contained"
-          onClick={() => {
-            const nextIndex = (control.currentQuestionIndex ?? 0) + 1;
-            void setCtrl({ currentQuestionIndex: nextIndex, isAnswerStarted: false, showAnswerCounts: false, showAnswerCheck: false, answerStartAt: deleteField() as any });
-          }}
-          disabled={!control.isQuizStarted}
-        >次の問題へ</Button>
-        <Button
-          variant="contained"
-          onClick={() => setCtrl({ showResult: true, isAnswerStarted: false, showAnswerCounts: false, showAnswerCheck: false, answerStartAt: deleteField() as any })}
-          disabled={!control.isQuizStarted || !!control.showResult}
-        >結果発表</Button>
-        <Button variant="outlined" onClick={handleReset} disabled={isResetting}>
-          {isResetting ? "リセット中..." : "問題をリセット"}
-        </Button>
-        <Button variant="outlined" color="error" onClick={handleClearAnswers} disabled={isClearing}>
-          {isClearing ? "クリア中..." : "全ての回答をクリア"}
-        </Button>
+
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+          進行ステップ
+        </Typography>
+        <Stack direction={{ xs: "column", md: "row" }} gap={1.5} flexWrap="wrap">
+          {[
+            { label: "1. クイズ開始", active: !!control.isQuizStarted },
+            { label: "2. 回答スタート", active: !!control.isAnswerStarted },
+            { label: "3. 回答数表示", active: !!control.showAnswerCounts },
+            { label: "4. 正解公開", active: !!control.showAnswerCheck },
+            { label: "5. 結果発表", active: !!control.showResult },
+          ].map((step) => (
+            <Stack
+              key={step.label}
+              direction="row"
+              alignItems="center"
+              gap={0.5}
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 999,
+                border: "1px solid",
+                borderColor: step.active ? "primary.main" : "divider",
+                color: step.active ? "primary.main" : "text.secondary",
+              }}
+            >
+              <Box
+                sx={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: step.active ? "primary.main" : "divider",
+                }}
+              />
+              <Typography variant="caption" fontWeight={600}>
+                {step.label}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      </Paper>
+
+      <Stack direction={{ xs: "column", md: "row" }} gap={2}>
+        <Paper variant="outlined" sx={{ flex: 1, p: 2, borderRadius: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            進行操作
+          </Typography>
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Button variant="contained" onClick={() => setCtrl({ isQuizStarted: true })} disabled={!!control.isQuizStarted}>
+              クイズ開始
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={() => setCtrl({ isAnswerStarted: true, answerStartAt: serverTimestamp() })}
+              disabled={!control.isQuizStarted || !!control.isAnswerStarted}
+            >
+              回答スタート
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => setCtrl({ showAnswerCounts: true })}
+              disabled={!control.isAnswerStarted || !!control.showAnswerCounts}
+            >
+              回答数表示
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => setCtrl({ showAnswerCheck: true })}
+              disabled={!control.isAnswerStarted || !!control.showAnswerCheck}
+            >
+              アンサーチェック
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                const nextIndex = (control.currentQuestionIndex ?? 0) + 1;
+                void setCtrl({
+                  currentQuestionIndex: nextIndex,
+                  isAnswerStarted: false,
+                  showAnswerCounts: false,
+                  showAnswerCheck: false,
+                  answerStartAt: deleteField() as any,
+                });
+              }}
+              disabled={!control.isQuizStarted}
+            >
+              次の問題へ
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => setCtrl({ showResult: true, isAnswerStarted: false, showAnswerCounts: false, showAnswerCheck: false, answerStartAt: deleteField() as any })}
+              disabled={!control.isQuizStarted || !!control.showResult}
+            >
+              結果発表
+            </Button>
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            ステップに沿ってボタンを押すと、進行状況が上のインジケーターに反映されます。
+          </Typography>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ flex: 1, p: 2, borderRadius: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            管理操作
+          </Typography>
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Button variant="outlined" onClick={handleReset} disabled={isResetting}>
+              {isResetting ? "リセット中..." : "問題をリセット"}
+            </Button>
+            <Button variant="outlined" color="error" onClick={handleClearAnswers} disabled={isClearing}>
+              {isClearing ? "クリア中..." : "全ての回答をクリア"}
+            </Button>
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            回答の初期化やイベント再開時はこちらから実行してください。
+          </Typography>
+        </Paper>
       </Stack>
+
       <Divider />
       <CurrentStatusCard ownerId={ownerId} control={control} question={currentQuestion} index={currentIndex} />
     </Stack>
@@ -1182,6 +1261,14 @@ function CurrentStatusCard({
                   <Box key={i} sx={{ minWidth: 220 }}>
                     <Typography variant="body2">{`選択肢 ${i + 1}`}</Typography>
                     <Typography variant="body2" sx={{ mb: 0.5 }}>{c?.text ?? ''}</Typography>
+                    {c?.imageUrl && (
+                      <Box
+                        component="img"
+                        src={c.imageUrl}
+                        alt={`選択肢${i + 1}の画像`}
+                        sx={{ width: "100%", maxWidth: 240, maxHeight: 160, objectFit: "contain", borderRadius: 1, mb: 0.5 }}
+                      />
+                    )}
                     {typeof counts[i] === 'number' && (
                       <Stack direction="row" alignItems="center" gap={1}>
                         <LinearProgress variant="determinate" value={counts.length ? (counts[i] / Math.max(1, counts.reduce((a,b)=>a+b,0))) * 100 : 0} sx={{ flex: 1 }} />
