@@ -549,7 +549,24 @@ const ParticipantContent: React.FC = () => {
                     第 {currentQuestionNumber} 問
                   </Typography>
                 )}
-                <Typography variant="h5">{question.question}</Typography>
+                <Typography variant="h5" sx={{ whiteSpace: "pre-line" }}>
+                  {question.question}
+                </Typography>
+                {question.questionImageUrl && (
+                  <Box
+                    component="img"
+                    src={question.questionImageUrl}
+                    alt="問題画像"
+                    sx={{
+                      width: "100%",
+                      maxHeight: 260,
+                      objectFit: "contain",
+                      borderRadius: 2,
+                      border: "1px solid rgba(15,23,42,0.08)",
+                      backgroundColor: "rgba(255,255,255,0.4)",
+                    }}
+                  />
+                )}
                 {control?.isAnswerStarted && question.duration ? (
                   <Stack gap={1}>
                     <Typography color={isTimeUp ? "error" : "text.secondary"}>
@@ -669,11 +686,31 @@ const ParticipantContent: React.FC = () => {
                         );
                       })}
                     </ToggleButtonGroup>
-                    {control?.isAnswerStarted && isTimeUp && !submitted && (
-                      <Alert severity="warning">回答時間が終了しました。次の問題をお待ちください。</Alert>
-                    )}
                   </>
                 ) : null}
+
+                {showAnswerCheck && question?.explanation && (
+                  <Box
+                    sx={{
+                      borderRadius: 2,
+                      border: "1px solid rgba(15,23,42,0.08)",
+                      backgroundColor: "rgba(255,255,255,0.8)",
+                      p: 2,
+                    }}
+                  >
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      解説
+                    </Typography>
+                    <Typography whiteSpace="pre-line" color="text.primary">
+                      {question.explanation}
+                    </Typography>
+                  </Box>
+                )}
+
+                {control?.isAnswerStarted && isTimeUp && !submitted && (
+                    <Alert severity="warning">回答時間が終了しました。次の問題をお待ちください。</Alert>
+                )}
+
                 {showAnswerCheck && (
                   <Alert
                     severity={

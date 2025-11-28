@@ -69,6 +69,10 @@ export type ReceiveQuestion = {
   answer: number;
   ownerId: string;
   quizId: string;
+  questionImageUrl?: string;
+  questionImageFile?: File | null;
+  questionImagePreview?: string | null;
+  explanation?: string;
 };
 
 type ControlState = {
@@ -388,6 +392,7 @@ async function compressImageFile(file: File): Promise<{ file: File; dataUrl: str
 function CreateForm({ ownerId }: { ownerId: string }) {
   const { questions } = useQuestionsCtx();
   const [question, setQuestion] = useState("");
+  const [explanation, setExplanation] = useState("");
   const [choiceCount, setChoiceCount] = useState(4);
   const [choices, setChoices] = useState<Choice[]>([
     { text: "", imageUrl: "" },
@@ -395,6 +400,7 @@ function CreateForm({ ownerId }: { ownerId: string }) {
     { text: "", imageUrl: "" },
     { text: "", imageUrl: "" },
   ]);
+  const [questionImage, setQuestionImage] = useState<{ file?: File; preview?: string | null }>({});
   const [duration, setDuration] = useState(10);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -439,12 +445,21 @@ function CreateForm({ ownerId }: { ownerId: string }) {
           return { text: c.text, imageUrl };
         })
       );
+      let questionImageUrl = "";
+      if (questionImage.file) {
+        const id = crypto.randomUUID();
+        const storageRef = strRef(storage, `questions/${id}_${questionImage.file.name}`);
+        await uploadBytes(storageRef, questionImage.file);
+        questionImageUrl = await getDownloadURL(storageRef);
+      }
 
       await addDoc(collection(db, "questions"), {
         question,
         choices: uploadedChoices,
         duration,
         answer: selectedAnswer,
+        explanation: explanation.trim(),
+        questionImageUrl,
         timestamp: serverTimestamp(),
         createdAt: serverTimestamp(),
         ownerId,
@@ -455,12 +470,14 @@ function CreateForm({ ownerId }: { ownerId: string }) {
       }
 
       setQuestion("");
+      setExplanation("");
       setChoices([
         { text: "", imageUrl: "" },
         { text: "", imageUrl: "" },
         { text: "", imageUrl: "" },
         { text: "", imageUrl: "" },
       ]);
+      setQuestionImage({});
       setDuration(10);
       setSelectedAnswer(null);
       // onSnapshotで一覧は自動更新されるため、明示的なreloadは不要
@@ -481,14 +498,55 @@ function CreateForm({ ownerId }: { ownerId: string }) {
         </Alert>
       )}
 
-      <TextField
-        label="問題文"
-        multiline
-        fullWidth
-        rows={4}
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-      />
+      <Stack gap={1}>
+        <TextField
+          label="問題文"
+          multiline
+          fullWidth
+          rows={4}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+        />
+        <Stack direction="row" gap={2} alignItems="center">
+          {questionImage.preview && (
+            <Box component="img" src={questionImage.preview} alt="問題画像プレビュー" sx={{ maxWidth: 200, borderRadius: 2, border: "1px solid", borderColor: "divider"}} />
+          )}
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Button
+              variant="outlined"
+              component="label"
+              size="small"
+            >
+              + 問題画像
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const { file: compressed, dataUrl } = await compressImageFile(file);
+                  if (compressed.size > MAX_IMAGE_SIZE_BYTES) {
+                    alert(`画像サイズは ${(MAX_IMAGE_SIZE_BYTES / (1024 * 1024)).toFixed(1)}MB 以下にしてください。`);
+                    return;
+                  }
+                  setQuestionImage({ file: compressed, preview: dataUrl });
+                  e.target.value = "";
+                }}
+              />
+            </Button>
+            {questionImage.preview && (
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setQuestionImage({})}
+              >
+                画像を削除
+              </Button>
+            )}
+          </Stack>
+        </Stack>
+      </Stack>
 
       <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} gap={1.5}>
         <Typography variant="subtitle2" color="text.secondary">選択肢の数</Typography>
@@ -604,6 +662,16 @@ function CreateForm({ ownerId }: { ownerId: string }) {
       </Stack>
 
       <TextField
+        label="解説（任意）"
+        multiline
+        fullWidth
+        minRows={3}
+        value={explanation}
+        onChange={(e) => setExplanation(e.target.value)}
+        placeholder="答えに関する解説や補足があれば記載してください"
+      />
+
+      <TextField
         label="制限時間（秒）"
         type="number"
         value={duration}
@@ -631,7 +699,7 @@ function QuestionsTable({ ownerId }: { ownerId: string }) {
 
   const handleEditClick = (q: ReceiveQuestion) => {
     setEditingId(q.id);
-    setEditQuestionData({ ...q });
+    setEditQuestionData({ ...q, explanation: q.explanation ?? "" });
   };
 
   const handleSaveClick = async () => {
@@ -665,7 +733,12 @@ function QuestionsTable({ ownerId }: { ownerId: string }) {
       );
 
       const refDoc = doc(db, "questions", editQuestionData.id);
-      await setDoc(refDoc, { ...editQuestionData, choices: uploadedChoices, timestamp: serverTimestamp() });
+      await setDoc(refDoc, {
+        ...editQuestionData,
+        explanation: editQuestionData.explanation?.trim?.() ?? "",
+        choices: uploadedChoices,
+        timestamp: serverTimestamp(),
+      });
 
       setEditingId(null);
       // 一覧はonSnapshotで自動更新
@@ -731,19 +804,53 @@ function QuestionsTable({ ownerId }: { ownerId: string }) {
             {questions.map((q, index) => (
               <TableRow key={q.id} hover>
                 <TableCell>{index + 1}</TableCell>
-                <TableCell sx={{ verticalAlign: "center" }}>
-                  {editingId === q.id ? (
-                    <TextField
-                      fullWidth
-                      multiline
-                      minRows={3}
-                      maxRows={6}
-                      value={editQuestionData?.question || ""}
-                      onChange={(e) => setEditQuestionData((prev) => (prev ? { ...prev, question: e.target.value } : null))}
-                    />
-                  ) : (
-                    q.question
-                  )}
+                <TableCell sx={{ verticalAlign: "top" }}>
+                  <Stack gap={1}>
+                    {editingId === q.id ? (
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        maxRows={6}
+                        value={editQuestionData?.question || ""}
+                        onChange={(e) => setEditQuestionData((prev) => (prev ? { ...prev, question: e.target.value } : null))}
+                      />
+                    ) : (
+                      <Typography whiteSpace="pre-line">{q.question}</Typography>
+                    )}
+                    {editingId === q.id ? (
+                      <TextField
+                        label="解説（任意）"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        maxRows={5}
+                        value={editQuestionData?.explanation ?? ""}
+                        onChange={(e) =>
+                          setEditQuestionData((prev) => (prev ? { ...prev, explanation: e.target.value } : null))
+                        }
+                      />
+                    ) : (
+                      q.explanation ? (
+                        <Typography variant="body2" color="text.secondary" whiteSpace="pre-line">
+                          解説: {q.explanation}
+                        </Typography>
+                      ) : null
+                    )}
+                    {(() => {
+                      const imageUrl = editingId === q.id ? editQuestionData?.questionImageUrl : q.questionImageUrl;
+                      if (!imageUrl) return null;
+                      return (
+                        <Box
+                          component="img"
+                          src={imageUrl}
+                          alt="問題画像"
+                          sx={{ display: "block", maxHeight: 120, maxWidth: 240, borderRadius: 1, cursor: "pointer", objectFit: "contain" }}
+                          onClick={() => setPreviewImage(imageUrl)}
+                        />
+                      );
+                    })()}
+                  </Stack>
                 </TableCell>
                 {[0, 1, 2, 3].map((i) => (
                   <TableCell key={i} sx={{ verticalAlign: "center" }}>
@@ -1256,6 +1363,19 @@ function CurrentStatusCard({
             <Box>
               <Typography variant="subtitle1" gutterBottom>現在表示中の問題</Typography>
               <Typography sx={{ mb: 1 }}>{question.question}</Typography>
+              {question.explanation && (
+                <Typography variant="body2" color="text.secondary" whiteSpace="pre-line" sx={{ mb: 1 }}>
+                  解説: {question.explanation}
+                </Typography>
+              )}
+              {question.questionImageUrl && (
+                <Box
+                  component="img"
+                  src={question.questionImageUrl}
+                  alt="問題画像"
+                  sx={{ maxWidth: 320, width: "100%", borderRadius: 2, border: "1px solid rgba(255,255,255,0.12)", mb: 1 }}
+                />
+              )}
               <Stack direction="row" gap={2} flexWrap="wrap">
                 {question.choices.slice(0, 4).map((c, i) => (
                   <Box key={i} sx={{ minWidth: 220 }}>
