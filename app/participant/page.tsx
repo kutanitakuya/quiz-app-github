@@ -734,7 +734,9 @@ const ParticipantContent: React.FC = () => {
                 )}
               </Stack>
             ) : (
-              <Typography align="center">現在進行中の問題はありません。</Typography>
+              !control?.showResult && (
+                <Typography align="center">現在進行中の問題はありません。</Typography>
+              )
             )}
 
             {control?.showResult && rankedResults.length > 0 && (
